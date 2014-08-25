@@ -43,8 +43,8 @@ class WatershedRegionInfo {
 
 class WatershedRegionGroup {
  public:
-  WatershedRegionGroup(const ImageData<int>* source_image,
-                       const ImageData<int>* marked_image,
+  WatershedRegionGroup(const ImageData<int>& source_image,
+                       const ImageData<int>& marked_image,
                        const std::vector<int>& sub_mark_index,
                        const std::vector<int>& bck_mark_index,
                        int region_count, int start_mark_num);
@@ -63,14 +63,11 @@ class WatershedRegionGroup {
   std::vector<std::vector<double> > m_bck_area_means;
 
  private:
-  WatershedRegionGroup()
-    : m_source_image(NULL)
-    , m_marked_image(NULL) {}
   void AddRegionPoint(int region_num, int index);
   void AnalyzeWatershedPoint(int washed_index);
 
-  const ImageData<int>* m_source_image;
-  const ImageData<int>* m_marked_image;
+  const ImageData<int>& m_source_image;
+  const ImageData<int>& m_marked_image;
   int m_region_count;
 };
 

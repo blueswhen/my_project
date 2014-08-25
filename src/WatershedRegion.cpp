@@ -6,8 +6,8 @@
 #include "include/ImageData.h"
 
 // class WatershedRegionGroup
-WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>* source_image,
-                                           const ImageData<int>* marked_image,
+WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>& source_image,
+                                           const ImageData<int>& marked_image,
                                            const std::vector<int>& sub_mark_index,
                                            const std::vector<int>& bck_mark_index,
                                            int region_count, int start_mark_num)
@@ -18,15 +18,15 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>* source_image,
   , m_source_image(source_image)
   , m_marked_image(marked_image)
   , m_region_count(region_count) {
-  int width = m_source_image->GetWidth();
-  int height = m_source_image->GetHeight();
+  int width = m_source_image.GetWidth();
+  int height = m_source_image.GetHeight();
 
   for (int i = 0; i < m_regions->size(); ++i) {
     (*m_regions)[i] = new WatershedRegionInfo();
   }
 
   for (int i = 0; i < sub_mark_index.size(); ++i) {
-    int region_num = GET_PIXEL(m_marked_image, sub_mark_index[i]);
+    int region_num = GET_PIXEL(&m_marked_image, sub_mark_index[i]);
     if (region_num <= 0) {
       continue;
     }
@@ -37,7 +37,7 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>* source_image,
   }
 
   for (int i = 0; i < bck_mark_index.size(); ++i) {
-    int region_num = GET_PIXEL(m_marked_image, bck_mark_index[i]);
+    int region_num = GET_PIXEL(&m_marked_image, bck_mark_index[i]);
     if (region_num <= 0) {
       continue;
     }
@@ -50,7 +50,7 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>* source_image,
   for (int y = 1; y < height - 1; ++y) {
     for (int x = 1; x < width - 1; ++x) {
       int index = y * width + x;
-      int mark = GET_PIXEL(m_marked_image, index);
+      int mark = GET_PIXEL(&m_marked_image, index);
       if (mark > 0) {
         AddRegionPoint(mark, index);
       } else if (mark == WASHED) {
@@ -84,7 +84,7 @@ int WatershedRegionGroup::GetRegionCount() const {
 }
 
 void WatershedRegionGroup::AddRegionPoint(int region_num, int index) {
-  int sample = GET_PIXEL(m_source_image, index);
+  int sample = GET_PIXEL(&m_source_image, index);
   int region_index = region_num - m_region_num_offset;
   (*m_regions)[region_index]->m_region_num = region_num;
   int rgb[3] = GET_THREE_COORDINATE(sample);
@@ -96,14 +96,14 @@ void WatershedRegionGroup::AddRegionPoint(int region_num, int index) {
 }
 
 void WatershedRegionGroup::AnalyzeWatershedPoint(int washed_index) {
-  int width = m_marked_image->GetWidth();
-  int height = m_marked_image->GetHeight();
+  int width = m_marked_image.GetWidth();
+  int height = m_marked_image.GetHeight();
   int y = washed_index / width;
   int x = washed_index -  y * width;
   int arrounds[8] = EIGHT_ARROUND_POSITION(x, y, width, height);
   std::vector<int> nums;
   for (int i = 0; i < 8; ++i) {
-    int num = GET_PIXEL(m_marked_image, arrounds[i]);
+    int num = GET_PIXEL(&m_marked_image, arrounds[i]);
     if (num > 0) {
       nums.push_back(num);
     }

@@ -200,7 +200,7 @@ void LazySnapping(LazySnappingData* lsd) {
                              &region_count);
 
     utils::Watershed(grad_image, marked_image, START_GRADIENT);
-    WatershedRegionGroup wrg(source_image, marked_image,
+    WatershedRegionGroup wrg(*source_image, *marked_image,
                              sub_mark_index, bck_mark_index,
                              region_count, START_MARK_NUM);
     utils::GraphCutBaseWatershed(k_means_sub, k_means_bck, &wrg);
