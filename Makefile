@@ -10,10 +10,15 @@ lazysnapping : \
   include/colour.h \
   include/CountTime.h \
   include/WatershedRegion.h \
+  include/ui.h \
+  include/data.h \
+  include/lazy_snapping.h \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \
-  src/WatershedRegion.cpp
+  src/WatershedRegion.cpp \
+  src/ui.cpp \
+  src/lazy_snapping.cpp
 	$(CXX) $^ $(LIBS) $(INCS) -o $@ -O2
 
 clean :
