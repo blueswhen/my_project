@@ -11,14 +11,16 @@ lazysnapping : \
   include/CountTime.h \
   include/WatershedRegion.h \
   include/ui.h \
-  include/data.h \
-  include/lazy_snapping.h \
+  include/Segmentation.h \
+  include/SegmentationData.h \
+  include/LazySnapping.h \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \
   src/WatershedRegion.cpp \
   src/ui.cpp \
-  src/lazy_snapping.cpp
+  src/SegmentationData.cpp \
+  src/LazySnapping.cpp
 	$(CXX) $^ $(LIBS) $(INCS) -o $@ -O2
 
 clean :

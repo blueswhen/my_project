@@ -1,5 +1,5 @@
 // Copyright sxniu 2014-9
-#include "include/lazy_snapping.h"
+#include "include/LazySnapping.h"
 
 #include <vector>
 #include <stdio.h>
@@ -13,6 +13,7 @@
 #include "include/colour.h"
 #include "include/CountTime.h"
 #include "include/WatershedRegion.h"
+#include "include/ui.h"
 
 #define START_GRADIENT 10
 // START_MARK_NUM must be positive number
@@ -23,13 +24,11 @@
 
 using namespace cv;
 
-namespace lazy_snapping {
-
-bool CheckUserMark(const ImageData<int>& source_image,
-                   std::vector<int>* sub_mark_index,
-                   std::vector<int>* sub_mark_value,
-                   std::vector<int>* bck_mark_index,
-                   std::vector<int>* bck_mark_value) {
+bool LazySnapping::CheckUserMark(const ImageData<int>& source_image,
+                                 std::vector<int>* sub_mark_index,
+                                 std::vector<int>* sub_mark_value,
+                                 std::vector<int>* bck_mark_index,
+                                 std::vector<int>* bck_mark_value) {
   if (sub_mark_index->size() == 0) {
     printf("error: no sub line mark\n");
     return false;
@@ -60,17 +59,17 @@ bool CheckUserMark(const ImageData<int>& source_image,
   return true;
 }
 
-void LazySnapping(LazySnappingData* lsd) {
-  ImageData<int>* mask_image = lsd->source_image;
-  const ImageData<int>* source_image = lsd->source_image_backup;
+void LazySnapping::DoPartition() {
+  ImageData<int>* mask_image = m_lsd->GetSourceImage();
+  const ImageData<int>* source_image = m_lsd->GetSourceImageBck();
 
   vector<int> sub_mark_index;
   vector<int> bck_mark_index;
   std::vector<int> sub_mark_value;
   std::vector<int> bck_mark_value;
-  utils::ExtractMarkPoints(*mask_image, *source_image, lsd->sub_line_colour,
+  utils::ExtractMarkPoints(*mask_image, *source_image, m_lsd->m_sub_line_colour,
                            &sub_mark_value, &sub_mark_index);
-  utils::ExtractMarkPoints(*mask_image, *source_image, lsd->bck_line_colour,
+  utils::ExtractMarkPoints(*mask_image, *source_image, m_lsd->m_bck_line_colour,
                            &bck_mark_value, &bck_mark_index);
 
   bool is_continue = CheckUserMark(*source_image, &sub_mark_index, &sub_mark_value,
@@ -89,9 +88,9 @@ void LazySnapping(LazySnappingData* lsd) {
   utils::Kmeans(bck_mark_value, &cluster_vec_bck, &k_means_bck,
                 K_NUM, ITER, mask_image->GetRandomSeed());
 
-  lsd->ClearMarkedImage();
-  ImageData<int>* marked_image = lsd->marked_image;
-  if (lsd->lazy_type == WATERSHED) {
+  m_lsd->ClearMarkedImage();
+  ImageData<int>* marked_image = m_lsd->GetMarkedImage();
+  if (m_lazy_type == WATERSHED) {
     ImageData<uchar> gray_image;
     ImageData<uchar> grad_image;
     utils::TurnGray(*source_image, &gray_image);
@@ -115,19 +114,85 @@ void LazySnapping(LazySnappingData* lsd) {
   }
 }
 
-void RemoveLastResult(const ImageData<int>& source_image, ImageData<int>* result_image) {
-  int width = source_image.GetWidth();
-  int height = source_image.GetHeight();
+void LazySnapping::RemoveLastResult() {
+  ImageData<int>* source_image = m_lsd->GetSourceImageBck();
+  ImageData<int>* result_image = m_lsd->GetSourceImage();
+  int width = source_image->GetWidth();
+  int height = source_image->GetHeight();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int colour = GET_PIXEL(result_image, index);
       if (colour == CONTOUR_LINE) {
-        int src_col = GET_PIXEL(&source_image, index);
+        int src_col = GET_PIXEL(source_image, index);
         SET_PIXEL(result_image, index, src_col);
       }
     }
   }
 }
 
-}  // namespace lazy_snapping
+void LazySnapping::SetUserInputType(Segmentation::UserInputType uit) {
+  m_uit = uit;
+}
+
+Segmentation::UserInputType LazySnapping::GetUserInputType() {
+  return m_uit;
+}
+
+ImageData<int>* LazySnapping::GetUiImage() {
+  return m_lsd->GetSourceImage();
+}
+
+void LazySnapping::DoLeftButtonDown(int index) {
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_sub_line_colour);
+  m_lsd->m_sub_mark_index.push_back(index);
+}
+
+void LazySnapping::DoRightButtonDown(int index) {
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_bck_line_colour);
+  m_lsd->m_bck_mark_index.push_back(index);
+}
+
+void LazySnapping::DoLeftMouseMove(int index) {
+  if (!m_left_mouse_move_restart && m_lsd->m_sub_mark_index.size() > 0) {
+    ui::DrawLine(m_lsd->GetSourceImage(), &m_lsd->m_sub_mark_index, index, m_lsd->m_sub_line_colour);
+  }
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_sub_line_colour);
+  m_lsd->m_sub_mark_index.push_back(index);
+  m_left_mouse_move_restart = false;
+  // RemoveLastResult();
+  // DoPartition();
+}
+
+void LazySnapping::DoRightMouseMove(int index) {
+  if (!m_right_mouse_move_restart && m_lsd->m_bck_mark_index.size() > 0) {
+    ui::DrawLine(m_lsd->GetSourceImage(), &m_lsd->m_bck_mark_index, index, m_lsd->m_bck_line_colour);
+  }
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_bck_line_colour);
+  m_lsd->m_bck_mark_index.push_back(index);
+  m_right_mouse_move_restart = false;
+}
+
+void LazySnapping::DoLeftButtonUp(int index) {
+  m_left_mouse_move_restart = true;
+  RemoveLastResult();
+  CountTime ct;
+  ct.ContBegin();
+  DoPartition();
+  ct.ContEnd();
+  ct.ContResult();
+}
+
+void LazySnapping::DoRightButtonUp(int index) {
+  m_right_mouse_move_restart = true;
+  RemoveLastResult();
+  CountTime ct;
+  ct.ContBegin();
+  DoPartition();
+  ct.ContEnd();
+  ct.ContResult();
+}
+
+void LazySnapping::SetLazySnappingMethod(LazySnappingType lst) {
+  m_lazy_type = lst;
+}

@@ -14,8 +14,8 @@
 #include "include/CountTime.h"
 #include "include/WatershedRegion.h"
 #include "include/ui.h"
-#include "include/data.h"
-#include "include/lazy_snapping.h"
+#include "include/LazySnapping.h"
+#include "include/Segmentation.h"
 
 #define SUB_COL GREEN
 #define BCK_COL BLUE
@@ -31,12 +31,13 @@ int main(int argc, char** argv) {
   ImageData<int> src_bk(src);
   ImageData<int> marked_image;
 
-  lazy_snapping::LazySnappingType lst = lazy_snapping::PIXEL;
-  lazy_snapping::LazySnappingData lsd(&src, &src_bk, SUB_COL, BCK_COL, lst);
   cv::namedWindow(ui::WIN_NAME, cv::WINDOW_AUTOSIZE);
-  data::RawData rd;
-  rd.lsd = &lsd;
-  cv::setMouseCallback(ui::WIN_NAME, ui::on_mouse, &rd);
+
+  LazySnapping::LazySnappingData lsd(&src, &src_bk, SUB_COL, BCK_COL);
+  LazySnapping ls(&lsd);
+  ui::Transpoter tp;
+  tp.seg = &ls;
+  cv::setMouseCallback(ui::WIN_NAME, ui::on_mouse, &tp);
 
   ui::ShowImage(src);
 
@@ -50,8 +51,7 @@ int main(int argc, char** argv) {
       // use pixel based lazy snapping 
       lsd.Reset();
       ui::ShowImage(src);
-      lst = lazy_snapping::PIXEL;
-      lsd.lazy_type = lst;
+      ls.SetLazySnappingMethod(LazySnapping::PIXEL);
       break;
     case 's':
       // show source image
@@ -59,16 +59,17 @@ int main(int argc, char** argv) {
       break;
     case 'w':
       // use watershed based lazy snapping
-      lst = lazy_snapping::WATERSHED;
-      lsd.lazy_type = lst;
+      ls.SetLazySnappingMethod(LazySnapping::WATERSHED);
       break;
     case 'm':
       // show marked image
-      if (!lsd.marked_image->IsEmpty()) {
-        ui::ShowImage(*(lsd.marked_image));
+      if (!lsd.GetMarkedImage()->IsEmpty()) {
+        ui::ShowImage(*lsd.GetMarkedImage());
       } else {
         printf("marked image has no data\n");
       }
+    case 'f':
+      // draw square
       break;
     }
   }

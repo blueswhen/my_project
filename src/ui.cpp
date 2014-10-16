@@ -10,11 +10,10 @@
 
 #include "include/ImageData.h"
 #include "include/CountTime.h"
-#include "include/lazy_snapping.h"
-#include "include/data.h"
+#include "include/LazySnapping.h"
+#include "include/Segmentation.h"
 
 using namespace cv;
-using namespace lazy_snapping;
 
 namespace ui {
 
@@ -34,7 +33,7 @@ void ShowImage(const ImageData<int>& image) {
   imshow(WIN_NAME, image_show);
 }
 
-void Line(ImageData<int>* image, std::vector<int>* line_vec, int end_idx, int line_colour) {
+void DrawLine(ImageData<int>* image, std::vector<int>* line_vec, int end_idx, int line_colour) {
   int width = image->GetWidth();
   int height = image->GetHeight();
   int start_y = line_vec->back() / width;
@@ -69,17 +68,12 @@ void Line(ImageData<int>* image, std::vector<int>* line_vec, int end_idx, int li
   }
 }
 
-bool g_sub_restart = false;
-bool g_bck_restart = false;
-
 void on_mouse(int event, int x, int y, int flags, void* param) {
-  data::RawData* rd = reinterpret_cast<data::RawData*>(param);
-  LazySnappingData* lsd = rd->lsd;
-  ImageData<int>* image = lsd->source_image;
-  std::vector<int>& sub_line_vec = lsd->sub_mark_index;
-  std::vector<int>& bck_line_vec = lsd->bck_mark_index;
-  int width = image->GetWidth();
-  int height = image->GetHeight();
+  Transpoter* tp = reinterpret_cast<Transpoter*>(param);
+  Segmentation* seg = tp->seg;
+  ImageData<int>* ui_image = seg->GetUiImage();
+  int width = ui_image->GetWidth();
+  int height = ui_image->GetHeight();
   int index = y * width + x;
   if (x < 0 || x >= width || y < 0 || y >= height) {
     return;
@@ -87,50 +81,22 @@ void on_mouse(int event, int x, int y, int flags, void* param) {
 
   bool is_show = true;
   if (event == CV_EVENT_LBUTTONDOWN) {
-    SET_PIXEL(image, index, lsd->sub_line_colour);
-    sub_line_vec.push_back(index);
+    seg->DoLeftButtonDown(index);
   } else if (event == CV_EVENT_RBUTTONDOWN) {
-    SET_PIXEL(image, index, lsd->bck_line_colour);
-    bck_line_vec.push_back(index);
+    seg->DoRightButtonDown(index);
   } else if (event == CV_EVENT_MOUSEMOVE && (flags & CV_EVENT_FLAG_LBUTTON)) {
-    if (!g_sub_restart && sub_line_vec.size() > 0) {
-      Line(image, &sub_line_vec, index, lsd->sub_line_colour);
-    }
-    SET_PIXEL(image, index, lsd->sub_line_colour);
-    sub_line_vec.push_back(index);
-    g_sub_restart = false;
-    // RemoveLastResult(*lsd->source_image_backup, lsd->source_image);
-    // LazySnapping(lsd);
+    seg->DoLeftMouseMove(index);
   } else if (event == CV_EVENT_MOUSEMOVE && (flags & CV_EVENT_FLAG_RBUTTON)) {
-    if (!g_bck_restart && bck_line_vec.size() > 0) {
-      Line(image, &bck_line_vec, index, lsd->bck_line_colour);
-    }
-    SET_PIXEL(image, index, lsd->bck_line_colour);
-    bck_line_vec.push_back(index);
-    g_bck_restart = false;
+    seg->DoRightMouseMove(index);
   } else if (event == CV_EVENT_LBUTTONUP) {
-    g_sub_restart = true;
-
-    RemoveLastResult(*lsd->source_image_backup, lsd->source_image);
-    CountTime ct;
-    ct.ContBegin();
-    LazySnapping(lsd);
-    ct.ContEnd();
-    ct.ContResult();
+    seg->DoLeftButtonUp(index);
   } else if (event == CV_EVENT_RBUTTONUP) {
-    g_bck_restart = true;
-
-    RemoveLastResult(*lsd->source_image_backup, lsd->source_image);
-    CountTime ct;
-    ct.ContBegin();
-    LazySnapping(lsd);
-    ct.ContEnd();
-    ct.ContResult();
+    seg->DoRightButtonUp(index);
   } else {
     is_show = false;
   }
   if (is_show) {
-    ShowImage(*image);
+    ShowImage(*ui_image);
   }
 }
 
