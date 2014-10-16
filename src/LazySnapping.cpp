@@ -67,9 +67,9 @@ void LazySnapping::DoPartition() {
   vector<int> bck_mark_index;
   std::vector<int> sub_mark_value;
   std::vector<int> bck_mark_value;
-  utils::ExtractMarkPoints(*mask_image, *source_image, m_lsd->m_sub_line_colour,
+  utils::ExtractMarkPoints(*mask_image, *source_image, m_lsd->ld.m_sub_line_colour,
                            &sub_mark_value, &sub_mark_index);
-  utils::ExtractMarkPoints(*mask_image, *source_image, m_lsd->m_bck_line_colour,
+  utils::ExtractMarkPoints(*mask_image, *source_image, m_lsd->ld.m_bck_line_colour,
                            &bck_mark_value, &bck_mark_index);
 
   bool is_continue = CheckUserMark(*source_image, &sub_mark_index, &sub_mark_value,
@@ -131,45 +131,43 @@ void LazySnapping::RemoveLastResult() {
   }
 }
 
-void LazySnapping::SetUserInputType(Segmentation::UserInputType uit) {
-  m_uit = uit;
-}
-
-Segmentation::UserInputType LazySnapping::GetUserInputType() {
-  return m_uit;
-}
-
 ImageData<int>* LazySnapping::GetUiImage() {
   return m_lsd->GetSourceImage();
 }
 
 void LazySnapping::DoLeftButtonDown(int index) {
-  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_sub_line_colour);
-  m_lsd->m_sub_mark_index.push_back(index);
+  assert(m_lsd->GetUserInputType() == SegmentationData::LINES);
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->ld.m_sub_line_colour);
+  m_lsd->ld.m_sub_mark_index.push_back(index);
 }
 
 void LazySnapping::DoRightButtonDown(int index) {
-  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_bck_line_colour);
-  m_lsd->m_bck_mark_index.push_back(index);
+  assert(m_lsd->GetUserInputType() == SegmentationData::LINES);
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->ld.m_bck_line_colour);
+  m_lsd->ld.m_bck_mark_index.push_back(index);
 }
 
 void LazySnapping::DoLeftMouseMove(int index) {
-  if (!m_left_mouse_move_restart && m_lsd->m_sub_mark_index.size() > 0) {
-    ui::DrawLine(m_lsd->GetSourceImage(), &m_lsd->m_sub_mark_index, index, m_lsd->m_sub_line_colour);
+  if (!m_left_mouse_move_restart && m_lsd->ld.m_sub_mark_index.size() > 0) {
+    ui::DrawLine(m_lsd->GetSourceImage(),
+                 &m_lsd->ld.m_sub_mark_index,
+                 index, m_lsd->ld.m_sub_line_colour);
   }
-  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_sub_line_colour);
-  m_lsd->m_sub_mark_index.push_back(index);
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->ld.m_sub_line_colour);
+  m_lsd->ld.m_sub_mark_index.push_back(index);
   m_left_mouse_move_restart = false;
   // RemoveLastResult();
   // DoPartition();
 }
 
 void LazySnapping::DoRightMouseMove(int index) {
-  if (!m_right_mouse_move_restart && m_lsd->m_bck_mark_index.size() > 0) {
-    ui::DrawLine(m_lsd->GetSourceImage(), &m_lsd->m_bck_mark_index, index, m_lsd->m_bck_line_colour);
+  if (!m_right_mouse_move_restart && m_lsd->ld.m_bck_mark_index.size() > 0) {
+    ui::DrawLine(m_lsd->GetSourceImage(),
+                 &m_lsd->ld.m_bck_mark_index,
+                 index, m_lsd->ld.m_bck_line_colour);
   }
-  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->m_bck_line_colour);
-  m_lsd->m_bck_mark_index.push_back(index);
+  SET_PIXEL(m_lsd->GetSourceImage(), index, m_lsd->ld.m_bck_line_colour);
+  m_lsd->ld.m_bck_mark_index.push_back(index);
   m_right_mouse_move_restart = false;
 }
 

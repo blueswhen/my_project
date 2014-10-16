@@ -5,7 +5,8 @@
 SegmentationData::SegmentationData(ImageData<int>* src_img, ImageData<int>* src_img_bck)
     : m_source_image(src_img)
     , m_source_image_backup(src_img_bck)
-    , m_marked_image(new ImageData<int>()) {}
+    , m_marked_image(new ImageData<int>())
+    , m_uit(LINES) {}
 
 SegmentationData::~SegmentationData() {
   if (m_marked_image != NULL) {
@@ -37,4 +38,12 @@ ImageData<int>* SegmentationData::GetSourceImageBck() {
 
 ImageData<int>* SegmentationData::GetMarkedImage() {
   return m_marked_image;
+}
+
+void SegmentationData::SetUserInputType(UserInputType uit) {
+  m_uit = uit;
+}
+
+SegmentationData::UserInputType SegmentationData::GetUserInputType() {
+  return m_uit;
 }

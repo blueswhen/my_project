@@ -7,15 +7,8 @@ class ImageData;
 
 class Segmentation {
  public:
-  enum UserInputType {
-    LINES,
-    SQUARE,
-    LASSO
-  };
   virtual void DoPartition() = 0;
   virtual void RemoveLastResult() = 0;
-  virtual void SetUserInputType(UserInputType uit) = 0;
-  virtual UserInputType GetUserInputType() = 0;
   virtual ImageData<int>* GetUiImage() = 0;
   virtual void DoLeftButtonDown(int index) = 0;
   virtual void DoRightButtonDown(int index) = 0;
