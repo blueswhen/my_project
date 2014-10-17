@@ -2,37 +2,23 @@
 #ifndef  INCLUDE_LAZY_SNAPPING_H_
 #define  INCLUDE_LAZY_SNAPPING_H_
 
-#include "include/ImageData.h"
 #include "include/Segmentation.h"
-#include "include/SegmentationData.h"
+
+class SegmentationData;
+class UserInput;
+
+template <class T>
+class ImageData;
 
 class LazySnapping :public Segmentation {
  public:
-  class LazySnappingData :public SegmentationData {
-   friend class LazySnapping;
-   public:
-    LazySnappingData(ImageData<int>* src_img, ImageData<int>* src_img_bck,
-                     int sub_line_colour, int bck_line_colour)
-      : SegmentationData(src_img, src_img_bck)
-      , ld(sub_line_colour, bck_line_colour) {}
-    virtual void Reset() {
-      SegmentationData::Reset();
-      ld.Reset();
-    }
-
-   private:
-    LinesData ld;
-  };
-
   enum LazySnappingType {
     WATERSHED,
     PIXEL
   };
 
-  LazySnapping(LazySnappingData* lsd)
-    : m_lsd(lsd)
-    , m_left_mouse_move_restart(false)
-    , m_right_mouse_move_restart(false)
+  LazySnapping(SegmentationData* sd, UserInput* usr_input)
+    : Segmentation(sd, usr_input)
     , m_lazy_type(PIXEL) {}
   virtual void DoPartition();
   virtual void RemoveLastResult();
@@ -51,9 +37,6 @@ class LazySnapping :public Segmentation {
                      std::vector<int>* sub_mark_value,
                      std::vector<int>* bck_mark_index,
                      std::vector<int>* bck_mark_value);
-  LazySnappingData* m_lsd;
-  bool m_left_mouse_move_restart;
-  bool m_right_mouse_move_restart;
   LazySnappingType m_lazy_type;
 };
 

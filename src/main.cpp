@@ -16,6 +16,9 @@
 #include "include/ui.h"
 #include "include/LazySnapping.h"
 #include "include/Segmentation.h"
+#include "include/SegmentationData.h"
+#include "include/Lines.h"
+#include "include/Square.h"
 
 #define SUB_COL GREEN
 #define BCK_COL BLUE
@@ -33,8 +36,10 @@ int main(int argc, char** argv) {
 
   cv::namedWindow(ui::WIN_NAME, cv::WINDOW_AUTOSIZE);
 
-  LazySnapping::LazySnappingData lsd(&src, &src_bk, SUB_COL, BCK_COL);
-  LazySnapping ls(&lsd);
+  SegmentationData sd(&src, &src_bk, SUB_COL, BCK_COL);
+  Lines ln;
+  Square sr;
+  LazySnapping ls(&sd, &ln);
   ui::Transpoter tp;
   tp.seg = &ls;
   cv::setMouseCallback(ui::WIN_NAME, ui::on_mouse, &tp);
@@ -49,7 +54,7 @@ int main(int argc, char** argv) {
     case 'r':
       // reset
       // use pixel based lazy snapping 
-      lsd.Reset();
+      ls.ResetUserInput();
       ui::ShowImage(src);
       ls.SetLazySnappingMethod(LazySnapping::PIXEL);
       break;
@@ -63,8 +68,8 @@ int main(int argc, char** argv) {
       break;
     case 'm':
       // show marked image
-      if (!lsd.GetMarkedImage()->IsEmpty()) {
-        ui::ShowImage(*lsd.GetMarkedImage());
+      if (!sd.GetMarkedImage()->IsEmpty()) {
+        ui::ShowImage(*sd.GetMarkedImage());
       } else {
         printf("marked image has no data\n");
       }

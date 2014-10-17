@@ -14,13 +14,20 @@ lazysnapping : \
   include/Segmentation.h \
   include/SegmentationData.h \
   include/LazySnapping.h \
+  include/UserInput.h \
+  include/Lines.h \
+  include/Square.h \
+  include/Lasso.h \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \
   src/WatershedRegion.cpp \
   src/ui.cpp \
   src/SegmentationData.cpp \
-  src/LazySnapping.cpp
+  src/LazySnapping.cpp \
+  src/Lines.cpp \
+  src/Square.cpp \
+  src/Lasso.cpp
 	$(CXX) $^ $(LIBS) $(INCS) -o $@ -O2
 
 clean :

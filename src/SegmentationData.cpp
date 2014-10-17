@@ -2,11 +2,13 @@
 #include "include/SegmentationData.h"
 #include "include/ImageData.h"
 
-SegmentationData::SegmentationData(ImageData<int>* src_img, ImageData<int>* src_img_bck)
+SegmentationData::SegmentationData(ImageData<int>* src_img, ImageData<int>* src_img_bck,
+                                   int usr_sub_colour, int usr_bck_colour)
     : m_source_image(src_img)
     , m_source_image_backup(src_img_bck)
     , m_marked_image(new ImageData<int>())
-    , m_uit(LINES) {}
+    , m_usr_sub_colour(usr_sub_colour)
+    , m_usr_bck_colour(usr_bck_colour) {}
 
 SegmentationData::~SegmentationData() {
   if (m_marked_image != NULL) {
@@ -40,10 +42,10 @@ ImageData<int>* SegmentationData::GetMarkedImage() {
   return m_marked_image;
 }
 
-void SegmentationData::SetUserInputType(UserInputType uit) {
-  m_uit = uit;
+int SegmentationData::GetSubjectColour() {
+  return m_usr_sub_colour;
 }
 
-SegmentationData::UserInputType SegmentationData::GetUserInputType() {
-  return m_uit;
+int SegmentationData::GetBackgroundColour() {
+  return m_usr_bck_colour;
 }
