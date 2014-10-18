@@ -29,6 +29,7 @@ class LazySnapping :public Segmentation {
   virtual void DoRightMouseMove(int index);
   virtual void DoLeftButtonUp(int index);
   virtual void DoRightButtonUp(int index);
+  virtual void ResetUserInput();
 
   void SetLazySnappingMethod(LazySnappingType lst);
  private:

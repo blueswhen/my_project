@@ -15,6 +15,7 @@
 #include "include/CountTime.h"
 #include "include/WatershedRegion.h"
 #include "include/ui.h"
+#include "include/Segmentation.h"
 
 #define START_GRADIENT 10
 // START_MARK_NUM must be positive number
@@ -61,11 +62,12 @@ bool LazySnapping::CheckUserMark(const ImageData<int>& source_image,
 }
 
 void LazySnapping::DoPartition() {
+  // get user input data, these code needn't to change
+  // whatever the situation is lines or square or lasso
   ImageData<int>* mask_image = m_sd->GetSourceImage();
   const ImageData<int>* source_image = m_sd->GetSourceImageBck();
   int subject_colour = m_sd->GetSubjectColour();
   int background_colour = m_sd->GetBackgroundColour();
-
   std::vector<int> sub_mark_index =
     m_usr_input->GetSubjectPoints(*mask_image, *source_image, subject_colour).first;
   std::vector<int> sub_mark_value =
@@ -81,7 +83,6 @@ void LazySnapping::DoPartition() {
     printf("user mark not ready!\n");
     return;
   }
-
   std::vector<int> cluster_vec_sub(sub_mark_value.size());
   std::vector<int> cluster_vec_bck(bck_mark_value.size());
   std::vector<std::vector<double> > k_means_sub(K_NUM, std::vector<double>(3));
@@ -172,6 +173,11 @@ void LazySnapping::DoRightButtonUp(int index) {
   DoPartition();
   ct.ContEnd();
   ct.ContResult();
+}
+
+void LazySnapping::ResetUserInput() {
+  Segmentation::ResetUserInput();
+  SetLazySnappingMethod(LazySnapping::PIXEL);
 }
 
 void LazySnapping::SetLazySnappingMethod(LazySnappingType lst) {

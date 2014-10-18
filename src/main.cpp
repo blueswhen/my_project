@@ -40,8 +40,11 @@ int main(int argc, char** argv) {
   Lines ln;
   Square sr;
   LazySnapping ls(&sd, &ln);
+  // GrabCut gc(&sd, &sr);
+
+  Segmentation* seg = &ls;
   ui::Transpoter tp;
-  tp.seg = &ls;
+  tp.seg = seg;
   cv::setMouseCallback(ui::WIN_NAME, ui::on_mouse, &tp);
 
   ui::ShowImage(src);
@@ -53,10 +56,8 @@ int main(int argc, char** argv) {
       goto exit_main;
     case 'r':
       // reset
-      // use pixel based lazy snapping 
-      ls.ResetUserInput();
+      seg->ResetUserInput();
       ui::ShowImage(src);
-      ls.SetLazySnappingMethod(LazySnapping::PIXEL);
       break;
     case 's':
       // show source image
@@ -75,6 +76,11 @@ int main(int argc, char** argv) {
       }
     case 'f':
       // draw square
+      seg->SetUserInput(&sr);
+      break;
+    case 'l':
+      // draw square
+      seg->SetUserInput(&ln);
       break;
     }
   }

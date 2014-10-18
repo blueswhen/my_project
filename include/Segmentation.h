@@ -22,6 +22,10 @@ class Segmentation {
   virtual void DoRightMouseMove(int index) = 0;
   virtual void DoLeftButtonUp(int index) = 0;
   virtual void DoRightButtonUp(int index) = 0;
+  virtual void ResetUserInput() {
+    m_sd->Reset();
+    m_usr_input->Reset();
+  }
 
   Segmentation(SegmentationData* sd, UserInput* usr_input)
     : m_sd(sd)
@@ -34,10 +38,6 @@ class Segmentation {
     }
     assert(m_usr_input != NULL);
     m_usr_input = usr_input;
-  }
-  void ResetUserInput() {
-    m_sd->Reset();
-    m_usr_input->Reset();
   }
 
  protected:
