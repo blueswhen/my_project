@@ -2,6 +2,7 @@
 #include "include/LazySnapping.h"
 
 #include <vector>
+#include <utility>
 #include <stdio.h>
 #include <float.h>
 // #include <math.h>
@@ -62,15 +63,17 @@ bool LazySnapping::CheckUserMark(const ImageData<int>& source_image,
 void LazySnapping::DoPartition() {
   ImageData<int>* mask_image = m_sd->GetSourceImage();
   const ImageData<int>* source_image = m_sd->GetSourceImageBck();
+  int subject_colour = m_sd->GetSubjectColour();
+  int background_colour = m_sd->GetBackgroundColour();
 
-  vector<int> sub_mark_index;
-  vector<int> bck_mark_index;
-  std::vector<int> sub_mark_value;
-  std::vector<int> bck_mark_value;
-  utils::ExtractMarkPoints(*mask_image, *source_image, m_sd->GetSubjectColour(),
-                           &sub_mark_value, &sub_mark_index);
-  utils::ExtractMarkPoints(*mask_image, *source_image, m_sd->GetBackgroundColour(),
-                           &bck_mark_value, &bck_mark_index);
+  std::vector<int> sub_mark_index =
+    m_usr_input->GetSubjectPoints(*mask_image, *source_image, subject_colour).first;
+  std::vector<int> sub_mark_value =
+    m_usr_input->GetSubjectPoints(*mask_image, *source_image, subject_colour).second;
+  std::vector<int> bck_mark_index =
+    m_usr_input->GetBackgroundPoints(*mask_image, *source_image, background_colour).first;
+  std::vector<int> bck_mark_value =
+    m_usr_input->GetBackgroundPoints(*mask_image, *source_image, background_colour).second;
 
   bool is_continue = CheckUserMark(*source_image, &sub_mark_index, &sub_mark_value,
                                    &bck_mark_index, &bck_mark_value);

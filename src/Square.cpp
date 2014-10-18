@@ -2,6 +2,9 @@
 
 #include "include/Square.h"
 
+#include <vector>
+#include <utility>
+
 #include "include/SegmentationData.h"
 #include "include/ImageData.h"
 
@@ -37,3 +40,18 @@ void Square::DrawBackgroundBegin(ImageData<int>* image, int pos, int bck_colour)
 void Square::DrawBackgroundFinish() {
 
 }
+
+std::pair<std::vector<int>, std::vector<int> > Square::GetSubjectPoints(
+  const ImageData<int>& mask_image,
+  const ImageData<int>& src_image,
+  int sub_colour) {
+
+}
+
+std::pair<std::vector<int>, std::vector<int> > Square::GetBackgroundPoints(
+  const ImageData<int>& mask_image,
+  const ImageData<int>& src_image,
+  int bck_colour) {
+
+}
+

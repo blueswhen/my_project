@@ -2,6 +2,9 @@
 
 #include "include/Lasso.h"
 
+#include <vector>
+#include <utility>
+
 #include "include/ImageData.h"
 
 void Lasso::Reset() {
@@ -31,3 +34,18 @@ void Lasso::DrawBackgroundBegin(ImageData<int>* image, int pos, int bck_colour) 
 void Lasso::DrawBackgroundFinish() {
 
 }
+
+std::pair<std::vector<int>, std::vector<int> > Lasso::GetSubjectPoints(
+  const ImageData<int>& mask_image,
+  const ImageData<int>& src_image,
+  int sub_colour) {
+
+}
+
+std::pair<std::vector<int>, std::vector<int> > Lasso::GetBackgroundPoints(
+  const ImageData<int>& mask_image,
+  const ImageData<int>& src_image,
+  int bck_colour) {
+
+}
+

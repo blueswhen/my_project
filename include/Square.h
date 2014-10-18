@@ -2,6 +2,9 @@
 #ifndef INCLUDE_SQUARE_H_
 #define INCLUDE_SQUARE_H_
 
+#include <vector>
+#include <utility>
+
 #include "include/UserInput.h"
 
 class SegmentationData;
@@ -19,6 +22,14 @@ class Square :public UserInput {
   virtual void DrawBackgroundBegin(ImageData<int>* image, int pos, int bck_colour);
   virtual void DrawSubjectFinish();
   virtual void DrawBackgroundFinish();
+  virtual std::pair<std::vector<int>, std::vector<int> > GetSubjectPoints(
+            const ImageData<int>& mask_image,
+            const ImageData<int>& src_image,
+            int sub_colour);
+  virtual std::pair<std::vector<int>, std::vector<int> > GetBackgroundPoints(
+            const ImageData<int>& mask_image,
+            const ImageData<int>& src_image,
+            int bck_colour);
 
  private:
   int m_left_up_point;
