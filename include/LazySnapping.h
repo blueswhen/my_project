@@ -2,10 +2,14 @@
 #ifndef  INCLUDE_LAZY_SNAPPING_H_
 #define  INCLUDE_LAZY_SNAPPING_H_
 
+#include <vector>
+
 #include "include/Segmentation.h"
+#include "include/utils.h"
 
 class SegmentationData;
 class UserInput;
+class WatershedRegionGroup;
 
 template <class T>
 class ImageData;
@@ -16,28 +20,25 @@ class LazySnapping :public Segmentation {
     WATERSHED,
     PIXEL
   };
+  LazySnapping(SegmentationData* sd, UserInput* usr_input);
 
-  LazySnapping(SegmentationData* sd, UserInput* usr_input)
-    : Segmentation(sd, usr_input)
-    , m_lazy_type(PIXEL) {}
   virtual void DoPartition();
-  virtual void RemoveLastResult();
   virtual ImageData<int>* GetUiImage();
-  virtual void DoLeftButtonDown(int index);
-  virtual void DoRightButtonDown(int index);
-  virtual void DoLeftMouseMove(int index);
-  virtual void DoRightMouseMove(int index);
-  virtual void DoLeftButtonUp(int index);
-  virtual void DoRightButtonUp(int index);
+  virtual void DoLeftButtonDown(int x, int y);
+  virtual void DoRightButtonDown(int x, int y);
+  virtual void DoLeftMouseMove(int x, int y);
+  virtual void DoRightMouseMove(int x, int y);
+  virtual void DoLeftButtonUp(int x, int y);
+  virtual void DoRightButtonUp(int x, int y);
   virtual void ResetUserInput();
+  // double GetEnergyRegionItem(int colour, Scene scn);
+  // double GetEnergyBoundryItem(int colour, int near_colour, Direction drc);
+  // void SegmentImageByGraph(const GrapyType& graph, ImageData<int>* marked_image);
 
   void SetLazySnappingMethod(LazySnappingType lst);
  private:
-  bool CheckUserMark(const ImageData<int>& source_image,
-                     std::vector<int>* sub_mark_index,
-                     std::vector<int>* sub_mark_value,
-                     std::vector<int>* bck_mark_index,
-                     std::vector<int>* bck_mark_value);
+  void LazySnappingWithCoarsen();
+  void LazySnappingWithoutCoarsen();
   LazySnappingType m_lazy_type;
 };
 

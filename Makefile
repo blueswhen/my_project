@@ -18,16 +18,22 @@ lazysnapping : \
   include/Lines.h \
   include/Square.h \
   include/Lasso.h \
+  include/GrabCut.h \
+  include/Gmm.h \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \
   src/WatershedRegion.cpp \
   src/ui.cpp \
+  src/Segmentation.cpp \
   src/SegmentationData.cpp \
   src/LazySnapping.cpp \
   src/Lines.cpp \
   src/Square.cpp \
-  src/Lasso.cpp
+  src/Lasso.cpp \
+  src/GrabCut.cpp \
+  src/UserInput.cpp \
+  src/Gmm.cpp
 	$(CXX) $^ $(LIBS) $(INCS) -o $@ -O2
 
 clean :

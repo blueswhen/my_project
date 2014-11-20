@@ -33,11 +33,14 @@ void ShowImage(const ImageData<int>& image) {
   imshow(WIN_NAME, image_show);
 }
 
-void DrawLine(ImageData<int>* image, std::vector<int>* line_vec, int end_idx, int line_colour) {
-  int width = image->GetWidth();
-  int height = image->GetHeight();
-  int start_y = line_vec->back() / width;
-  int start_x = line_vec->back() - start_y * width;
+void DrawLine(ImageData<int>* image, std::vector<int>* line_points_idx,
+              int end_idx, int line_colour, int width) {
+  if (line_points_idx == NULL) {
+    printf("error: the line vec is null");
+    return;
+  }
+  int start_y = line_points_idx->back() / width;
+  int start_x = line_points_idx->back() - start_y * width;
   int end_y = end_idx / width;
   int end_x = end_idx - end_y * width;
   double k_line = end_x - start_x == 0 ? (end_y - start_y > 0 ? DBL_MAX : -DBL_MAX) :
@@ -63,9 +66,17 @@ void DrawLine(ImageData<int>* image, std::vector<int>* line_vec, int end_idx, in
       }
     }
     int index = y * width + x;
-    line_vec->push_back(index);
-    SET_PIXEL(image, index, line_colour);
+    line_points_idx->push_back(index);
+    if (image != NULL) {
+      int width_image = image->GetWidth();
+      assert(width_image == width);
+      SET_PIXEL(image, index, line_colour);
+    }
   }
+}
+
+void DrawLine(std::vector<int>* line_points_idx, int end_idx, int width) {
+  DrawLine(NULL, line_points_idx, end_idx, BLACK, width);
 }
 
 void on_mouse(int event, int x, int y, int flags, void* param) {
@@ -75,23 +86,20 @@ void on_mouse(int event, int x, int y, int flags, void* param) {
   int width = ui_image->GetWidth();
   int height = ui_image->GetHeight();
   int index = y * width + x;
-  if (x < 0 || x >= width || y < 0 || y >= height) {
-    return;
-  }
 
   bool is_show = true;
   if (event == CV_EVENT_LBUTTONDOWN) {
-    seg->DoLeftButtonDown(index);
+    seg->DoLeftButtonDown(x, y);
   } else if (event == CV_EVENT_RBUTTONDOWN) {
-    seg->DoRightButtonDown(index);
+    seg->DoRightButtonDown(x, y);
   } else if (event == CV_EVENT_MOUSEMOVE && (flags & CV_EVENT_FLAG_LBUTTON)) {
-    seg->DoLeftMouseMove(index);
+    seg->DoLeftMouseMove(x, y);
   } else if (event == CV_EVENT_MOUSEMOVE && (flags & CV_EVENT_FLAG_RBUTTON)) {
-    seg->DoRightMouseMove(index);
+    seg->DoRightMouseMove(x, y);
   } else if (event == CV_EVENT_LBUTTONUP) {
-    seg->DoLeftButtonUp(index);
+    seg->DoLeftButtonUp(x, y);
   } else if (event == CV_EVENT_RBUTTONUP) {
-    seg->DoRightButtonUp(index);
+    seg->DoRightButtonUp(x, y);
   } else {
     is_show = false;
   }

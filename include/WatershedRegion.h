@@ -10,12 +10,6 @@ typedef unsigned char uchar;
 // WASHED must be < 0
 #define WASHED 0xff0000ff
 
-enum Scene {
-  BACKGROUND = 0,
-  SUBJECT = 1,
-  UNDEFINE = 2,
-};
-
 class WatershedRegionGroup;
 
 class WatershedRegionInfo {

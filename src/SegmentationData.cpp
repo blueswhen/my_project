@@ -2,32 +2,36 @@
 #include "include/SegmentationData.h"
 #include "include/ImageData.h"
 
-SegmentationData::SegmentationData(ImageData<int>* src_img, ImageData<int>* src_img_bck,
-                                   int usr_sub_colour, int usr_bck_colour)
+SegmentationData::SegmentationData(ImageData<int>* src_img,
+                                   ImageData<int>* src_img_bck,
+                                   int usr_sub_colour, int usr_bck_colour,
+                                   SegmentationData* half_sd)
     : m_source_image(src_img)
     , m_source_image_backup(src_img_bck)
     , m_marked_image(new ImageData<int>())
     , m_usr_sub_colour(usr_sub_colour)
-    , m_usr_bck_colour(usr_bck_colour) {}
+    , m_usr_bck_colour(usr_bck_colour)
+    , m_half_sd(half_sd)
+    , m_is_cutted(false) {
+      m_marked_image->CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
+    }
 
 SegmentationData::~SegmentationData() {
-  if (m_marked_image != NULL) {
-    delete m_marked_image;
-    m_marked_image = NULL;
-  }
+  delete m_marked_image;
+  m_marked_image = NULL;
 }
 
 void SegmentationData::Reset() {
   m_source_image->CopyImage(*m_source_image_backup);
   ClearMarkedImage();
+  m_is_cutted = false;
 }
 
 void SegmentationData::ClearMarkedImage() {
-  if (m_marked_image != NULL) {
-    delete m_marked_image;
-    m_marked_image = NULL;
-  }
+  delete m_marked_image;
+  m_marked_image = NULL;
   m_marked_image = new ImageData<int>();
+  m_marked_image->CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
 }
 
 ImageData<int>* SegmentationData::GetSourceImage() {
@@ -36,6 +40,10 @@ ImageData<int>* SegmentationData::GetSourceImage() {
 
 ImageData<int>* SegmentationData::GetSourceImageBck() {
   return m_source_image_backup;
+}
+
+SegmentationData* SegmentationData::GetHalfSegmentationData() {
+  return m_half_sd;
 }
 
 ImageData<int>* SegmentationData::GetMarkedImage() {
@@ -48,4 +56,12 @@ int SegmentationData::GetSubjectColour() {
 
 int SegmentationData::GetBackgroundColour() {
   return m_usr_bck_colour;
+}
+
+bool SegmentationData::GetCutStatus() {
+  return m_is_cutted;
+}
+
+void SegmentationData::SetCutStatus(bool status) {
+  m_is_cutted = status;
 }

@@ -12,16 +12,9 @@
 #include "include/colour.h"
 #include "include/ImageData.h"
 #include "include/WatershedRegion.h"
-#include "include/maxflow-v3.03/block.h"
-#include "include/maxflow-v3.03/graph.h"
-
-typedef unsigned char uchar;
-typedef Graph<double, double, double> GraphType;
 
 #define COMPONENTS 3
 #define IN_QUEUE -2
-#define EPSILON 0.0001
-#define LAMDA 30
 #define CONTOUR_LINE RED
 
 typedef unsigned char uchar;
@@ -227,7 +220,7 @@ void MarkConnectedArea(const ImageData<uchar>& grad_image,
     for (int x = 1; x < width - 1; ++x) {
       int index = y * width + x;
       int gradient = static_cast<int>((*grad_image.m_data)[index]);
-      int mark_value = (*marked_image->m_data)[index];
+      int mark_value = GET_PIXEL(marked_image, index);
       if (mark_value == 0 && gradient <= max_threshold) {
         SET_PIXEL(marked_image, index, mark_num);
         DoMarkConnectedArea(grad_image, marked_image, x, y,
@@ -254,12 +247,12 @@ void Watershed(const ImageData<uchar>& grad_image,
   for (int y = 1; y < height - 1; ++y) {
     for (int x = 1; x < width - 1; ++x) {
       int index = y * width + x;
-      int mark_value = (*marked_image->m_data)[index];
+      int mark_value = GET_PIXEL(marked_image, index);
       if (mark_value < 0 && mark_value != IN_QUEUE) {
         SET_PIXEL(marked_image, index, -mark_value);
         int arrounds[4] = FOUR_ARROUND_POSITION(x, y, width, height);
         for (int i = 0; i < 4; ++i) {
-          int arround_mark_value = (*marked_image->m_data)[arrounds[i]];
+          int arround_mark_value = GET_PIXEL(marked_image, arrounds[i]);
           if (arround_mark_value == 0) {
             int grad_value = (*grad_image.m_data)[arrounds[i]];
             assert(grad_value > start_gradient && grad_value < 256);
@@ -698,141 +691,101 @@ void ShowMarkedImage(ImageData<int>* marked_image) {
   }
 }
 
-double GetColourDistence(const std::vector<double>& c_mean,
-                         const std::vector<std::vector<double> >& k_means) {
-  double min = DBL_MAX;
-  for (int i = 0; i < k_means.size(); ++i) {
-    double diff = THREE_DIM_DIST(c_mean, k_means[i]); 
-    if (diff < min) {
-      min = diff;
-    }
-  }
-  return min;
-}
-
-double GetColourDistence(const int& colour,
-                         const std::vector<std::vector<double> >& k_means) {
-  int rgb[3] = GET_THREE_COORDINATE(colour);
-  std::vector<double> col_vec(rgb, rgb + 3);
-  return GetColourDistence(col_vec, k_means);
-}
-
-void GraphCutBaseWatershed(const std::vector<std::vector<double> >& k_means_sub,
-                           const std::vector<std::vector<double> >& k_means_bck,
-                           WatershedRegionGroup* wrg) {
-  int region_count = wrg->GetRegionCount();
-  GraphType graph(region_count, region_count * 4);
-  for (int i = 0; i < region_count; ++i) {
-    WatershedRegionInfo* wri = (*wrg->m_regions)[i];
-    // region_mean has three colour channels
-    const std::vector<double>& region_mean = wri->GetRegionMeanValue();
-    double sub_dist = GetColourDistence(region_mean, k_means_sub);
-    double bck_dist = GetColourDistence(region_mean, k_means_bck);
-    double sum_dist = sub_dist + bck_dist;
-
-    // e1[0] is background, e1[1] is subject
-    double e1[2];
-    if (wri->m_scene == UNDEFINE) {
-      e1[0] = bck_dist / sum_dist;
-      e1[1] = sub_dist / sum_dist;
-    } else if (wri->m_scene == SUBJECT) {
-      e1[0] = DBL_MAX;
-      e1[1] = 0;
-    } else {
-      e1[0] = 0;
-      e1[1] = DBL_MAX;
-    }
-    graph.add_node();
-    graph.add_tweights(i, e1[0], e1[1]);
-
-    for (int j = 0; j < wri->m_adjacent_regions.size(); ++j) {
-      WatershedRegionInfo* adj_wri = wri->m_adjacent_regions[j];
-      const std::vector<double>& adj_region_mean = adj_wri->GetRegionMeanValue();
-      double e2 = 0;
-      e2 = LAMDA / (THREE_DIM_DIST(region_mean, adj_region_mean) + 1);
-
-      int adj_region_num = adj_wri->m_region_num;
-      int adj_region_index = adj_region_num - wrg->m_region_num_offset;
-      assert(adj_region_index < i);
-      graph.add_edge(i, adj_region_index, e2, e2);
-    }
-  }
-
-  int flow = graph.maxflow();
-
-  for (int i = 0; i < region_count; ++i) {
-    WatershedRegionInfo* wri = (*wrg->m_regions)[i];
-    if (wri->m_scene == UNDEFINE) {
-      if (graph.what_segment(i) == GraphType::SOURCE) {
-        wri->m_scene = SUBJECT;
-      } else {
-        wri->m_scene = BACKGROUND;
+/*
+  Calculate beta - parameter of GrabCut algorithm.
+  beta = 1/(2*avg(sqr(||color[i] - color[j]||)))
+*/
+double CalcBeta(const ImageData<int>& img) {
+  double beta = 0;
+  int width = img.GetWidth();
+  int height = img.GetHeight();
+  for(int y = 0; y < height; ++y) {
+    for(int x = 0; x < width; ++x) {
+      int color = GET_PIXEL(&img, y * width + x);
+      // left
+      if(x > 0) {
+        int color_arr = GET_PIXEL(&img, y * width + x - 1);
+        beta += COLOUR_DIST_SQUARE(color, color_arr);
+      }
+      // upleft
+      if(y > 0 && x > 0) {
+        int color_arr = GET_PIXEL(&img, (y - 1) * width + x - 1);
+        beta += COLOUR_DIST_SQUARE(color, color_arr);
+      }
+      // up
+      if(y > 0) {
+        int color_arr = GET_PIXEL(&img, (y - 1) * width + x);
+        beta += COLOUR_DIST_SQUARE(color, color_arr);
+      }
+      // upright
+      if(y > 0 && x < width - 1) {
+        int color_arr = GET_PIXEL(&img, (y - 1) * width + x + 1);
+        beta += COLOUR_DIST_SQUARE(color, color_arr);
       }
     }
   }
+  if(beta <= EPSILON) {
+    beta = 0;
+  } else {
+    beta = 1.f / (2 * beta / (4 * width * height - 3 * width - 3 * height + 2));
+  }
+  return beta;
 }
 
-void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
-                       const std::vector<std::vector<double> >& k_means_bck,
-                       const std::vector<int> sub_mark_index,
-                       const std::vector<int> bck_mark_index,
-                       const ImageData<int >& source_image,
-                       ImageData<int>* marked_image) {
+#if 0
+void GraphCut(const ImageData<int>& source_image,
+              ImageData<int>* marked_image,
+              Segmentation* seg,
+              int undef_colour,
+              int sub_colour) {
   int width = source_image.GetWidth();
   int height = source_image.GetHeight();
   if (marked_image->IsEmpty()) {
     marked_image->CreateEmptyImage(width, height);
   }
-  int N = width * height;
+  int vtx_count = width * height;
+  int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
+  GraphType graph(vtx_count, edge_count);
 
-  GraphType graph(N, N * 8);
+  // e1[0] is background, e1[1] is subject
+  double e1[2] = {0, 0};
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int colour = GET_PIXEL(&source_image, index);
-      double sub_dist = GetColourDistence(colour, k_means_sub);
-      double bck_dist = GetColourDistence(colour, k_means_bck);
-      double sum_dist = sub_dist + bck_dist;
-      // e1[0] is background, e1[1] is subject
-      double e1[2] = {0, 0};
-      for (int i = 0; i < sub_mark_index.size(); ++i) {
-        if (index == sub_mark_index[i]) {
-          e1[0] = DBL_MAX;
-          e1[1] = 0;
-        }
-      }
-      for (int i = 0; i < bck_mark_index.size(); ++i) {
-        if (index == bck_mark_index[i]) {
-          e1[0] = 0;
-          e1[1] = DBL_MAX;
-        }
-      }
-      if (e1[0] == 0 && e1[1] == 0) {
-        e1[0] = bck_dist / sum_dist;
-        e1[1] = sub_dist / sum_dist;
+      int marked_colour = GET_PIXEL(marked_image, index);
+      if (marked_colour == undef_colour) {
+        e1[0] = seg->GetEnergyRegionItem(colour, BACKGROUND);
+        e1[1] = seg->GetEnergyRegionItem(colour, SUBJECT);
+      } else if (marked_colour == sub_colour) {
+        e1[0] = DBL_MAX;
+        e1[1] = 0;
+      } else {
+        e1[0] = 0;
+        e1[1] = DBL_MAX;
       }
       graph.add_node();
       graph.add_tweights(index, e1[0], e1[1]);
 
       // 8 neighbours
-      if (x - 1 > 0) {
+      if (x > 0) {
         int near_colour = GET_PIXEL(&source_image, index - 1);
-        double e2 = LAMDA / (COLOUR_DIST(colour, near_colour) + 0.01);
+        double e2 = seg->GetEnergyBoundaryItem(colour, near_colour, LEFT);
         graph.add_edge(index, index - 1, e2, e2);
       }
-      if (x - 1 > 0 && y - 1 > 0) {
+      if (x > 0 && y > 0) {
         int near_colour = GET_PIXEL(&source_image, index - width - 1);
-        double e2 = LAMDA / (COLOUR_DIST(colour, near_colour) + 0.01);
+        double e2 = seg->GetEnergyBoundaryItem(colour, near_colour, LEFT_UP);
         graph.add_edge(index, index - width - 1, e2, e2);
       }
-      if (y - 1 > 0) {
-        int near_colour = GET_PIXEL(&source_image, index - width);
-        double e2 = LAMDA / (COLOUR_DIST(colour, near_colour) + 0.01);
+      if (y > 0) {
+        int near_colour = GET_PIXEL(&source_image, index - near_colour);
+        double e2 = seg->GetEnergyBoundaryItem(colour, near_colour, UP);
         graph.add_edge(index, index - width, e2, e2);
       }
-      if (x + 1 < width && y - 1 > 0) {
-        int near_colour = GET_PIXEL(&source_image, index - width + 0.01);
-        double e2 = LAMDA / (COLOUR_DIST(colour, near_colour) + 1);
+      if (x < width - 1 && y > 0) {
+        int near_colour = GET_PIXEL(&source_image, index - width + 1);
+        double e2 = seg->GetEnergyBoundaryItem(colour, near_colour, RIGHT_UP);
         graph.add_edge(index, index - width + 1, e2, e2);
       }
     }
@@ -840,17 +793,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 
   int flow = graph.maxflow();
 
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      int index = y * width + x;
-      if (graph.what_segment(index) == GraphType::SOURCE) {
-        SET_PIXEL(marked_image, index, WHITE);
-      } else {
-        SET_PIXEL(marked_image, index, BLACK);
-      }
-    }
-  }
+  seg->SegmentImageByGraph(graph, marked_image);
 }
+#endif
 
 void ExtractContourLine(const WatershedRegionGroup& wrg, ImageData<int>* source_image,
                         ImageData<int>* marked_image) {
@@ -916,10 +861,13 @@ void ExtractContourLine(ImageData<int>* source_image,
       int index = y * width + x;
       int arrounds[8] = EIGHT_ARROUND_POSITION(x, y, width, height);
       int cen_colour = GET_PIXEL(marked_image, index);
+      if (cen_colour == IGNORED) {
+        continue;
+      }
       for (int i = 0; i < 8; ++i) {
         int arr_colour = GET_PIXEL(marked_image, arrounds[i]);
-        if (cen_colour != arr_colour) {
-          SET_PIXEL(source_image, arrounds[i], CONTOUR_LINE);
+        if (cen_colour != arr_colour && arr_colour == SUBJECT) {
+          SET_PIXEL(source_image, index, CONTOUR_LINE);
           break;
         }
       }
@@ -971,6 +919,64 @@ void ExtractMarkPoints(const ImageData<int>& mask_image,
       }
     }
   }
+}
+
+// scale_factor is the factor of both width and height of the image
+void Scale(const ImageData<int>& src_image, ImageData<int>* dst_image, double scale_factor) {
+  assert(dst_image != NULL);
+  int src_width = src_image.GetWidth();
+  int src_height = src_image.GetHeight();
+  int dst_width = static_cast<int>(src_width * scale_factor);
+  int dst_height = static_cast<int>(src_height * scale_factor);
+
+  if ((scale_factor >= 2 || (scale_factor <= 0.5 && scale_factor > 0)) &&
+      dst_image->IsEmpty()) {
+    dst_image->CreateEmptyImage(dst_width, dst_height);
+  } else if (dst_image->IsEmpty() == false) {
+    assert(dst_width == dst_image->GetWidth() && dst_height == dst_image->GetHeight());
+  } else {
+    printf("error: the dst_image must be empty or the scale_factor is not supported\n");
+    return;
+  }
+  // up scale
+  if (scale_factor >= 2) {
+    for (int y = 0; y < src_height; ++y) {
+      for (int x = 0; x < src_width; ++x) {
+        int colour = GET_PIXEL(&src_image, y * src_width + x);
+        int new_y = static_cast<int>(y * scale_factor);
+        int new_x = static_cast<int>(x * scale_factor);
+        SET_PIXEL(dst_image, new_y * dst_width + new_x, colour);
+        SET_PIXEL(dst_image, new_y * dst_width + new_x + 1, colour);
+        SET_PIXEL(dst_image, (new_y + 1) * dst_width + new_x, colour);
+        SET_PIXEL(dst_image, (new_y + 1) * dst_width + new_x + 1, colour);
+      }
+    }
+    return;
+  }
+
+  // down scale
+  const int inv_factor = static_cast<int>(1 / scale_factor);
+  int k = 0;
+  for (int y = 0; y < src_height; ++y) {
+    if (y % inv_factor != 0) {
+      continue;
+    }
+    for (int x = 0; x < src_width; ++x) {
+      if (x % inv_factor == 0) {
+        int index = y * src_width + x;
+        int colour = GET_PIXEL(&src_image, index);
+        SET_PIXEL(dst_image, k++, colour);
+      }
+    }
+  }
+}
+
+void HalfScale(const ImageData<int>& src_image, ImageData<int>* dst_image) {
+  Scale(src_image, dst_image, 0.5);
+}
+
+void DoubleScale(const ImageData<int>& src_image, ImageData<int>* dst_image) {
+  utils::Scale(src_image, dst_image, 2);
 }
 
 }  // namespace utils

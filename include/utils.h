@@ -6,7 +6,29 @@
 #include <stdlib.h>
 #include <math.h>
 
+#include "include/maxflow-v3.03/block.h"
+#include "include/maxflow-v3.03/graph.h"
+#include "include/colour.h"
+
+#define EPSILON 0.0001
 typedef unsigned char uchar;
+typedef Graph<double, double, double> GraphType;
+
+enum Scene {
+  BACKGROUND = BLACK,
+  SUBJECT = WHITE,
+  UNDEFINE = GRAY,
+  IGNORED = BLUE,
+  TEMP1 = GREEN,
+  TEMP2 = RED,
+};
+
+enum Direction {
+  LEFT = 3,
+  LEFT_UP = 4,
+  UP = 5,
+  RIGHT = 6,
+};
 
 #define EIGHT_ARROUND_POSITION(center_x, center_y, width, height) \
 { \
@@ -79,6 +101,7 @@ template <class T>
 class ImageData;
 
 class WatershedRegionGroup;
+class Segmentation;
 
 namespace utils {
 
@@ -115,15 +138,7 @@ void Kmeans(const ImageData<T>& image, ImageData<U>* marked_image,
 }
 
 void ShowMarkedImage(ImageData<int>* marked_image);
-void GraphCutBaseWatershed(const std::vector<std::vector<double> >& k_means_sub,
-                           const std::vector<std::vector<double> >& k_means_bck,
-                           WatershedRegionGroup* wrg);
-void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
-                       const std::vector<std::vector<double> >& k_means_bck,
-                       const std::vector<int> sub_mark_index,
-                       const std::vector<int> bck_mark_index,
-                       const ImageData<int >& source_image,
-                       ImageData<int>* marked_image);
+double CalcBeta(const ImageData<int>& img);
 void ExtractContourLine(const WatershedRegionGroup& wrg, ImageData<int>* source_image,
                         ImageData<int>* marked_image);
 void ExtractContourLine(ImageData<int>* source_image,
@@ -136,6 +151,9 @@ void ExtractMarkPoints(const ImageData<int>& mask_image,
                        int mark_colour,
                        std::vector<int>* mark_points,
                        std::vector<int>* mark_index);
+void Scale(const ImageData<int>& src_image, ImageData<int>* dst_image, double scale_factor);
+void HalfScale(const ImageData<int>& src_image, ImageData<int>* dst_image);
+void DoubleScale(const ImageData<int>& src_image, ImageData<int>* dst_image);
 
 }  // namespace utils
 

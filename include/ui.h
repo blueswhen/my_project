@@ -21,7 +21,12 @@ struct Transpoter {
 const char* const WIN_NAME = "image";
 
 void ShowImage(const ImageData<int>& image);
-void DrawLine(ImageData<int>* image, std::vector<int>* line_vec, int end_idx, int line_colour);
+// the last element of the line_points_idx is the start point
+// when line finished, line_points_idx has all line points
+void DrawLine(ImageData<int>* image, std::vector<int>* line_points_idx,
+              int end_idx, int line_colour, int width);
+// only draw line in line_points_idx vector
+void DrawLine(std::vector<int>* line_points_idx, int end_idx, int width);
 void on_mouse(int event, int x, int y, int flags, void* param);
 
 }  // namespace ui

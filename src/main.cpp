@@ -19,10 +19,13 @@
 #include "include/SegmentationData.h"
 #include "include/Lines.h"
 #include "include/Square.h"
+#include "include/GrabCut.h"
 
 #define SUB_COL GREEN
 #define BCK_COL BLUE
 #define IMAGE_OUT_NAME "result.bmp"
+#define IMAGE_OUT_NAME_2 "result2.bmp"
+#define IMAGE_OUT_NAME_3 "result3.bmp"
 
 int main(int argc, char** argv) {
   if (argc == 1) {
@@ -32,19 +35,30 @@ int main(int argc, char** argv) {
   ImageData<int> src;
   utils::ReadImage(argv[1], &src);
   ImageData<int> src_bk(src);
-  ImageData<int> marked_image;
+  ImageData<int> scale_50_src;
+  ImageData<int> scale_25_src;
+
+  utils::HalfScale(src_bk, &scale_50_src);
+  utils::HalfScale(scale_50_src, &scale_25_src);
+  ImageData<int> scale_50_src_bk(scale_50_src);
+  ImageData<int> scale_25_src_bk(scale_25_src);
 
   cv::namedWindow(ui::WIN_NAME, cv::WINDOW_AUTOSIZE);
 
-  SegmentationData sd(&src, &src_bk, SUB_COL, BCK_COL);
-  Lines ln;
+  SegmentationData scale_25_sd(&scale_25_src, &scale_25_src_bk, SUB_COL, BCK_COL, NULL);
+  SegmentationData scale_50_sd(&scale_50_src, &scale_50_src_bk, SUB_COL, BCK_COL, &scale_25_sd);
+  SegmentationData sd(&src, &src_bk, SUB_COL, BCK_COL, &scale_50_sd);
+
+  // Lines ln_25;
+  // Lines ln_50(&ln_25);
+  Lines ln_50;
+  Lines ln(&ln_50);
   Square sr;
   LazySnapping ls(&sd, &ln);
-  // GrabCut gc(&sd, &sr);
+  GrabCut gc(&sd, &ln);
 
-  Segmentation* seg = &ls;
   ui::Transpoter tp;
-  tp.seg = seg;
+  tp.seg = &ls;
   cv::setMouseCallback(ui::WIN_NAME, ui::on_mouse, &tp);
 
   ui::ShowImage(src);
@@ -56,7 +70,7 @@ int main(int argc, char** argv) {
       goto exit_main;
     case 'r':
       // reset
-      seg->ResetUserInput();
+      tp.seg->ResetUserInput();
       ui::ShowImage(src);
       break;
     case 's':
@@ -74,19 +88,30 @@ int main(int argc, char** argv) {
       } else {
         printf("marked image has no data\n");
       }
-    case 'f':
-      // draw square
-      seg->SetUserInput(&sr);
+      break;
+    case 'g':
+      // GrabCut
+      tp.seg = &gc;
+      tp.seg->SetUserInput(&sr);
       break;
     case 'l':
-      // draw square
-      seg->SetUserInput(&ln);
+      // LazySnapping
+      tp.seg = &ls;
+      tp.seg->SetUserInput(&ln);
+      break;
+    case 'n':
+      // draw line
+      tp.seg->SetUserInput(&ln);
       break;
     }
   }
 
 exit_main:
     cv::destroyWindow(ui::WIN_NAME);
-    utils::SaveImage(IMAGE_OUT_NAME, src_bk);
+    utils::SaveImage(IMAGE_OUT_NAME, src);
+    // utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
+    // utils::SaveImage(IMAGE_OUT_NAME_2, *scale_50_sd.GetMarkedImage());
+    // utils::SaveImage(IMAGE_OUT_NAME_3, *scale_25_sd.GetMarkedImage());
+    // utils::SaveImage(IMAGE_OUT_NAME, scale_25_src);
     return 0;
 }
