@@ -3,7 +3,6 @@
 #define INCLUDE_LASSO_H_
 
 #include <vector>
-#include <utility>
 
 #include "include/UserInput.h"
 

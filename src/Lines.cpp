@@ -3,7 +3,6 @@
 #include "include/Lines.h"
 
 #include <vector>
-#include <utility>
 #include <assert.h>
 
 #include "include/ImageData.h"
@@ -20,7 +19,7 @@
   int new_y = y / 2; \
   while (half_uip != NULL) { \
     int new_index = new_y * half_width + new_x; \
-    half_uip->scene_mark_index->push_back(new_index); \
+    half_uip->scene_mark_index.push_back(new_index); \
     half_uip = half_uip->GetHalfScaleUserInput(); \
     half_width /= 2; \
     new_x /= 2; \
@@ -40,13 +39,13 @@
     half_sd = half_uip->m_sd; \
     assert(half_sd != NULL); \
     ImageData<int>* half_image = half_sd->GetSourceImage(); \
-    std::vector<int>* half_scene_index = half_uip->scene_mark_index; \
+    std::vector<int>& half_scene_index = half_uip->scene_mark_index; \
     int new_index = std::min(new_y, half_height - 1) * half_width + \
                     std::min(new_x, half_width - 1); \
-    if (!is_restart && half_scene_index->size() > 0) { \
-      ui::DrawLine(half_image, half_scene_index, new_index, scene_colour, half_width); \
+    if (!is_restart && half_scene_index.size() > 0) { \
+      ui::DrawLine(half_image, &half_scene_index, new_index, scene_colour, half_width); \
     } \
-    half_scene_index->push_back(new_index); \
+    half_scene_index.push_back(new_index); \
     half_uip = half_uip->GetHalfScaleUserInput(); \
     half_width /= 2; \
     half_height /= 2; \
@@ -63,11 +62,11 @@
     half_sd = half_uip->m_sd; \
     assert(half_sd != NULL); \
     ImageData<int>* half_image = half_sd->GetSourceImageBck(); \
-    std::vector<int>* hlf_scene_index = half_uip->scene_mark_index; \
-    std::vector<int>* hlf_scene_value = half_uip->scene_mark_value; \
-    hlf_scene_value->clear(); \
-    for (int i = 0; i < hlf_scene_index->size(); ++i) { \
-      hlf_scene_value->push_back(GET_PIXEL(half_image, (*hlf_scene_index)[i])); \
+    std::vector<int>& hlf_scene_index = half_uip->scene_mark_index; \
+    std::vector<int>& hlf_scene_value = half_uip->scene_mark_value; \
+    hlf_scene_value.clear(); \
+    for (int i = 0; i < hlf_scene_index.size(); ++i) { \
+      hlf_scene_value.push_back(GET_PIXEL(half_image, hlf_scene_index[i])); \
     } \
     half_uip = half_uip->GetHalfScaleUserInput(); \
   } \
@@ -91,7 +90,7 @@ void Lines::DrawFirstPointForSub(int x, int y) {
   int index = y * width + x;
 
   SET_PIXEL(ui_image, index, sub_colour);
-  m_sub_mark_index->push_back(index);
+  m_sub_mark_index.push_back(index);
 
   DRAW_FIRST_POINT_FOR_HALF_LINES(m_sub_mark_index);
 }
@@ -104,7 +103,7 @@ void Lines::DrawFirstPointForBck(int x, int y) {
   int index = y * width + x;
 
   SET_PIXEL(ui_image, index, bck_colour);
-  m_bck_mark_index->push_back(index);
+  m_bck_mark_index.push_back(index);
 
   DRAW_FIRST_POINT_FOR_HALF_LINES(m_bck_mark_index);
 }
@@ -117,12 +116,12 @@ void Lines::DrawSubjectBegin(int x, int y) {
   int height = ui_image->GetHeight();
   int index = std::min(y, height - 1) * width + std::min(x, width - 1);
 
-  if (!m_sub_line_restart && m_sub_mark_index->size() > 0) {
-    ui::DrawLine(ui_image, m_sub_mark_index, index, sub_colour, width);
+  if (!m_sub_line_restart && m_sub_mark_index.size() > 0) {
+    ui::DrawLine(ui_image, &m_sub_mark_index, index, sub_colour, width);
   }
 
   SET_PIXEL(ui_image, index, sub_colour);
-  m_sub_mark_index->push_back(index);
+  m_sub_mark_index.push_back(index);
   m_sub_line_restart = false;
 
   DRAW_SCENE_BEGIN_FOR_HALF_LINES(m_sub_mark_index, sub_colour, m_sub_line_restart);
@@ -132,9 +131,9 @@ void Lines::DrawSubjectFinish(int x, int y) {
   m_sub_line_restart = true;
   assert(m_sd != NULL);
   ImageData<int>* image = m_sd->GetSourceImageBck();
-  m_sub_mark_value->clear();
-  for (int i = 0; i < m_sub_mark_index->size(); ++i) {
-    m_sub_mark_value->push_back(GET_PIXEL(image, (*m_sub_mark_index)[i]));
+  m_sub_mark_value.clear();
+  for (int i = 0; i < m_sub_mark_index.size(); ++i) {
+    m_sub_mark_value.push_back(GET_PIXEL(image, m_sub_mark_index[i]));
   }
 
   DRAW_SCENE_FINISH_FOR_HALF_LINES(m_sub_mark_index, m_sub_mark_value);
@@ -148,12 +147,12 @@ void Lines::DrawBackgroundBegin(int x, int y) {
   int height = ui_image->GetHeight();
   int index = std::min(y, height - 1) * width + std::min(x, width - 1);
 
-  if (!m_bck_line_restart && m_bck_mark_index->size() > 0) {
-    ui::DrawLine(ui_image, m_bck_mark_index, index, bck_colour, width);
+  if (!m_bck_line_restart && m_bck_mark_index.size() > 0) {
+    ui::DrawLine(ui_image, &m_bck_mark_index, index, bck_colour, width);
   }
 
   SET_PIXEL(ui_image, index, bck_colour);
-  m_bck_mark_index->push_back(index);
+  m_bck_mark_index.push_back(index);
   m_bck_line_restart = false;
 
   DRAW_SCENE_BEGIN_FOR_HALF_LINES(m_bck_mark_index, bck_colour, m_bck_line_restart);
@@ -163,9 +162,9 @@ void Lines::DrawBackgroundFinish(int x, int y) {
   m_bck_line_restart = true;
   assert(m_sd != NULL);
   ImageData<int>* image = m_sd->GetSourceImageBck();
-  m_bck_mark_value->clear();
-  for (int i = 0; i < m_bck_mark_index->size(); ++i) {
-    m_bck_mark_value->push_back(GET_PIXEL(image, (*m_bck_mark_index)[i]));
+  m_bck_mark_value.clear();
+  for (int i = 0; i < m_bck_mark_index.size(); ++i) {
+    m_bck_mark_value.push_back(GET_PIXEL(image, m_bck_mark_index[i]));
   }
 
   DRAW_SCENE_FINISH_FOR_HALF_LINES(m_sub_mark_index, m_sub_mark_value);

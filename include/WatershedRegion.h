@@ -10,13 +10,14 @@ typedef unsigned char uchar;
 // WASHED must be < 0
 #define WASHED 0xff0000ff
 
+#define GET_REGION_ITEM(wrg, index) ((wrg).m_regions[index])
+
 class WatershedRegionGroup;
 
 class WatershedRegionInfo {
  friend class WatershedRegionGroup;
  public:
   WatershedRegionInfo();
-  ~WatershedRegionInfo();
   const std::vector<double>& GetRegionMeanValue();
 
   int m_region_num;
@@ -42,14 +43,14 @@ class WatershedRegionGroup {
                        const std::vector<int>& sub_mark_index,
                        const std::vector<int>& bck_mark_index,
                        int region_count, int start_mark_num);
-  ~WatershedRegionGroup();
 
   // fill m_adjacent_regions and m_watershed_points in class WatershedRegionInfo
   int GetRegionCount() const;
   void PrintRegionPointsInfo();
 
   // if you only want one copy, please use point
-  std::vector<WatershedRegionInfo*>* m_regions;
+  // use macros GET_REGION_ITEM not m_regions
+  std::vector<WatershedRegionInfo> m_regions;
   // the first region num
   int m_region_num_offset;
 

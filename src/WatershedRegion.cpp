@@ -11,7 +11,7 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>& source_image,
                                            const std::vector<int>& sub_mark_index,
                                            const std::vector<int>& bck_mark_index,
                                            int region_count, int start_mark_num)
-  : m_regions(new std::vector<WatershedRegionInfo*>(region_count))
+  : m_regions(std::vector<WatershedRegionInfo>(region_count))
   , m_region_num_offset(start_mark_num)
   , m_sub_area_means(std::vector<std::vector<double> >())
   , m_bck_area_means(std::vector<std::vector<double> >())
@@ -21,18 +21,14 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>& source_image,
   int width = m_source_image.GetWidth();
   int height = m_source_image.GetHeight();
 
-  for (int i = 0; i < m_regions->size(); ++i) {
-    (*m_regions)[i] = new WatershedRegionInfo();
-  }
-
   for (int i = 0; i < sub_mark_index.size(); ++i) {
     int region_num = GET_PIXEL(&m_marked_image, sub_mark_index[i]);
     if (region_num <= 0) {
       continue;
     }
     int region_index = region_num - m_region_num_offset;
-    if ((*m_regions)[region_index]->m_scene != SUBJECT) {
-      (*m_regions)[region_index]->m_scene = SUBJECT;
+    if (m_regions[region_index].m_scene != SUBJECT) {
+      m_regions[region_index].m_scene = SUBJECT;
     }
   }
 
@@ -42,8 +38,8 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>& source_image,
       continue;
     }
     int region_index = region_num - m_region_num_offset;
-    if ((*m_regions)[region_index]->m_scene != BACKGROUND) {
-      (*m_regions)[region_index]->m_scene = BACKGROUND;
+    if (m_regions[region_index].m_scene != BACKGROUND) {
+      m_regions[region_index].m_scene = BACKGROUND;
     }
   }
 
@@ -60,22 +56,9 @@ WatershedRegionGroup::WatershedRegionGroup(const ImageData<int>& source_image,
   }
 }
 
-WatershedRegionGroup::~WatershedRegionGroup() {
-  if (m_regions != NULL) {
-    for (int i = 0; i < m_regions->size(); ++i) {
-      if ((*m_regions)[i] != NULL) {
-        delete (*m_regions)[i];
-        (*m_regions)[i] = NULL;
-      }
-    }
-    delete m_regions;
-    m_regions = NULL;
-  }
-}
-
 void WatershedRegionGroup::PrintRegionPointsInfo() {
-  for (int i = 0; i < m_regions->size(); ++i) {
-    printf("count = %d\n", (*m_regions)[i]->m_samples_count);
+  for (int i = 0; i < m_regions.size(); ++i) {
+    printf("count = %d\n", m_regions[i].m_samples_count);
   }
 }
 
@@ -86,13 +69,13 @@ int WatershedRegionGroup::GetRegionCount() const {
 void WatershedRegionGroup::AddRegionPoint(int region_num, int index) {
   int sample = GET_PIXEL(&m_source_image, index);
   int region_index = region_num - m_region_num_offset;
-  (*m_regions)[region_index]->m_region_num = region_num;
+  m_regions[region_index].m_region_num = region_num;
   int rgb[3] = GET_THREE_COORDINATE(sample);
-  (*m_regions)[region_index]->m_sum_col[0] += rgb[0];
-  (*m_regions)[region_index]->m_sum_col[1] += rgb[1];
-  (*m_regions)[region_index]->m_sum_col[2] += rgb[2];
-  (*m_regions)[region_index]->m_samples_count++;
-  (*m_regions)[region_index]->m_is_mean_changed = true;
+  m_regions[region_index].m_sum_col[0] += rgb[0];
+  m_regions[region_index].m_sum_col[1] += rgb[1];
+  m_regions[region_index].m_sum_col[2] += rgb[2];
+  m_regions[region_index].m_samples_count++;
+  m_regions[region_index].m_is_mean_changed = true;
 }
 
 void WatershedRegionGroup::AnalyzeWatershedPoint(int washed_index) {
@@ -112,16 +95,16 @@ void WatershedRegionGroup::AnalyzeWatershedPoint(int washed_index) {
   nums.erase(unique(nums.begin(), nums.end()), nums.end());
   for (int i = nums.size() - 1; i >= 0; --i) {
     int index = nums[i] - m_region_num_offset;
-    WatershedRegionInfo* region = (*m_regions)[index];
+    WatershedRegionInfo& region = m_regions[index];
     for (int j = i - 1; j >= 0; --j) {
       int adjacent_region_index = nums[j] - m_region_num_offset;
-      WatershedRegionInfo* adj_wri = (*m_regions)[adjacent_region_index];
-      if ((region->m_watershed_points).find(nums[j]) == (region->m_watershed_points).end()) {
-        region->m_adjacent_regions.push_back(adj_wri);
+      WatershedRegionInfo* adj_wri = &m_regions[adjacent_region_index];
+      if ((region.m_watershed_points).find(nums[j]) == region.m_watershed_points.end()) {
+        region.m_adjacent_regions.push_back(adj_wri);
         std::vector<int> vec(1, washed_index);
-        (region->m_watershed_points)[nums[j]] = vec;
+        (region.m_watershed_points)[nums[j]] = vec;
       } else {
-        (region->m_watershed_points).find(nums[j])->second.push_back(washed_index);
+        (region.m_watershed_points).find(nums[j])->second.push_back(washed_index);
       }
     }
   }
@@ -131,15 +114,12 @@ void WatershedRegionGroup::AnalyzeWatershedPoint(int washed_index) {
 WatershedRegionInfo::WatershedRegionInfo()
   : m_region_num(0)
   , m_scene(UNDEFINE)
-  , m_adjacent_regions(std::vector<WatershedRegionInfo*>(0))
+  , m_adjacent_regions(std::vector<WatershedRegionInfo*>())
   , m_watershed_points(std::map<int, std::vector<int> >())
   , m_sum_col(std::vector<int>(3, 0))
   , m_mean_col(std::vector<double>(3, 0))
   , m_samples_count(0)
   , m_is_mean_changed(true) {}
-
-WatershedRegionInfo::~WatershedRegionInfo() {
-}
 
 const std::vector<double>& WatershedRegionInfo::GetRegionMeanValue() {
   if (!m_is_mean_changed) {

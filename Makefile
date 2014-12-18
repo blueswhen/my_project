@@ -20,6 +20,7 @@ lazysnapping : \
   include/Lasso.h \
   include/GrabCut.h \
   include/Gmm.h \
+	include/Graph.h \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \

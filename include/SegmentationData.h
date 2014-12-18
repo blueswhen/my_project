@@ -3,9 +3,7 @@
 #define INCLUDE_SEGMENTATIONDATA_H
 
 #include <vector>
-
-template <class T>
-class ImageData;
+#include "include/ImageData.h"
 
 class SegmentationData {
  public:
@@ -13,7 +11,6 @@ class SegmentationData {
                    ImageData<int>* src_img_bck,
                    int usr_sub_colour, int usr_bck_colour,
                    SegmentationData* half_sd);
-  ~SegmentationData();
   void Reset();
   void ClearMarkedImage();
   ImageData<int>* GetSourceImage();
@@ -28,7 +25,7 @@ class SegmentationData {
  private:
   ImageData<int>* m_source_image;
   ImageData<int>* m_source_image_backup;
-  ImageData<int>* m_marked_image;
+  ImageData<int> m_marked_image;
   int m_usr_sub_colour;
   int m_usr_bck_colour;
   SegmentationData* m_half_sd;

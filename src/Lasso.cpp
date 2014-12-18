@@ -3,7 +3,6 @@
 #include "include/Lasso.h"
 
 #include <vector>
-#include <utility>
 
 #include "include/ImageData.h"
 

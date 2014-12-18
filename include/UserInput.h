@@ -3,7 +3,6 @@
 #define INCLUDE_USER_INPUT_H_
 
 #include <vector>
-#include <utility>
 #include <stdlib.h>
 
 class SegmentationData;
@@ -25,7 +24,7 @@ class UserInput {
   UserInput();
   UserInput(UserInput* hlf_uip);
   void Reset();
-  virtual ~UserInput();
+  virtual ~UserInput() {}
   void SetSegmentationData(SegmentationData* sd);
   UserInput* GetHalfScaleUserInput();
   std::pair<std::vector<int>*, std::vector<int>* > GetSubjectPoints();
@@ -33,10 +32,10 @@ class UserInput {
 
  protected:
   SegmentationData* m_sd;
-  std::vector<int>* m_sub_mark_index;
-  std::vector<int>* m_sub_mark_value;
-  std::vector<int>* m_bck_mark_index;
-  std::vector<int>* m_bck_mark_value;
+  std::vector<int> m_sub_mark_index;
+  std::vector<int> m_sub_mark_value;
+  std::vector<int> m_bck_mark_index;
+  std::vector<int> m_bck_mark_value;
   UserInput* m_hlf_uip;
 };
 

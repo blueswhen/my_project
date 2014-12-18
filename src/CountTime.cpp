@@ -12,10 +12,14 @@ void CountTime::ContEnd() {
   gettimeofday(&time_end, NULL);
 }
 
-// unit is "ms"
+// unit is "us"
 double CountTime::ContResult() {
   double time = (time_end.tv_sec - time_start.tv_sec) +
                 (time_end.tv_usec - time_start.tv_usec) / 1000000.0;
-  printf("the running time = %fms\n", time * 1000);
   return time;
+}
+
+// unit is "ms"
+void CountTime::PrintTime() {
+  printf("the running time = %fms\n", ContResult() * 1000);
 }

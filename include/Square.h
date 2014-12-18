@@ -3,7 +3,6 @@
 #define INCLUDE_SQUARE_H_
 
 #include <vector>
-#include <utility>
 
 #include "include/UserInput.h"
 

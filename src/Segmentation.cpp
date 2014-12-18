@@ -108,3 +108,58 @@ void Segmentation::SetUserInput(UserInput* usr_input) {
   m_usr_input = usr_input;
   m_usr_input->SetSegmentationData(m_sd);
 }
+
+void Segmentation::SegmentationForAllPixel(SegmentationData* sd, UserInput* uip) {
+  bool is_continue = CheckUserMark(sd, uip);
+  if (!is_continue) {
+    printf("user mark not ready!\n");
+    return;
+  }
+  InitMarkedImage(sd, uip);
+  Cut(sd, uip, NULL);
+}
+
+void Segmentation::UncoarsenMarkedImage(SegmentationData* sd, UserInput* uip,
+                                        std::map<int, int>* graph_vtx_map, int band_width) {
+  ImageData<int>* half_marked_image = sd->GetHalfSegmentationData()->GetMarkedImage();
+  ImageData<int>* marked_image = sd->GetMarkedImage();
+  utils::DoubleScale(*half_marked_image, marked_image);
+  MakeTrimapForMarkedImage(marked_image, band_width);
+  UpdateSceneVector(sd, uip);
+  MakeGraphVtx(*marked_image, graph_vtx_map);
+}
+
+void Segmentation::SegmentationWithCoarsen() {
+  SegmentationData* sd = m_sd;
+  UserInput* uip = m_usr_input;
+
+  std::vector<SegmentationData*> sd_vec;
+  std::vector<UserInput*> uip_vec;
+  while (uip != NULL) {
+    sd_vec.push_back(sd);
+    uip_vec.push_back(uip);
+    uip = uip->GetHalfScaleUserInput();
+    sd = sd->GetHalfSegmentationData();
+  }
+
+  std::vector<SegmentationData*>::reverse_iterator itr_sd = sd_vec.rbegin();
+  std::vector<UserInput*>::reverse_iterator itr_uip = uip_vec.rbegin();
+  SegmentationForAllPixel(*itr_sd, *itr_uip);
+  int band_width = 3;
+  while (true) {
+    // band_width *= 2;
+    ++itr_uip;
+    ++itr_sd;
+    if (itr_uip == uip_vec.rend()) {
+      break;
+    }
+
+    std::map<int, int> graph_vtx_map;
+    UncoarsenMarkedImage(*itr_sd, *itr_uip, &graph_vtx_map, band_width);
+    Cut(*itr_sd, *itr_uip, &graph_vtx_map);
+  }
+}
+
+void Segmentation::SegmentationWithoutCoarsen() {
+  SegmentationForAllPixel(m_sd, m_usr_input);
+}

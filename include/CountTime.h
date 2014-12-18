@@ -10,6 +10,7 @@ class CountTime {
   void ContBegin();
   void ContEnd();
   double ContResult();
+  void PrintTime();
 
  private:
   timeval time_start;

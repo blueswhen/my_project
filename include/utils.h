@@ -6,13 +6,10 @@
 #include <stdlib.h>
 #include <math.h>
 
-#include "include/maxflow-v3.03/block.h"
-#include "include/maxflow-v3.03/graph.h"
 #include "include/colour.h"
 
 #define EPSILON 0.0001
 typedef unsigned char uchar;
-typedef Graph<double, double, double> GraphType;
 
 enum Scene {
   BACKGROUND = BLACK,
@@ -131,8 +128,8 @@ void Kmeans(const ImageData<T>& image, ImageData<U>* marked_image,
   if (marked_image->IsEmpty()) {
     marked_image->CreateEmptyImage(image.GetWidth(), image.GetHeight());
   }
-  const std::vector<T>& image_vec = *(image.m_data);
-  std::vector<U>* marked_vec = marked_image->m_data;
+  const std::vector<T>& image_vec = image.m_data;
+  std::vector<U>* marked_vec = &(marked_image->m_data);
   int random_seed = image.GetRandomSeed();
   Kmeans(image_vec, marked_vec, NULL, k, iter, random_seed);
 }

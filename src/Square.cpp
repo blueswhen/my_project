@@ -3,7 +3,6 @@
 #include "include/Square.h"
 
 #include <vector>
-#include <utility>
 #include <assert.h>
 
 #include "include/SegmentationData.h"
@@ -76,19 +75,19 @@ void Square::DrawSubjectFinish(int x, int y) {
   int y_rightdown = m_right_down_y;
   int x_rightdown = m_right_down_x;
 
-  m_sub_mark_index->clear();
-  m_sub_mark_value->clear();
-  m_bck_mark_index->clear();
-  m_bck_mark_value->clear();
+  m_sub_mark_index.clear();
+  m_sub_mark_value.clear();
+  m_bck_mark_index.clear();
+  m_bck_mark_value.clear();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       if (y >= y_leftup && y < y_rightdown && x >= x_leftup && x < x_rightdown) {
-        m_sub_mark_index->push_back(index);
-        m_sub_mark_value->push_back(GET_PIXEL(image, index));
+        m_sub_mark_index.push_back(index);
+        m_sub_mark_value.push_back(GET_PIXEL(image, index));
       } else {
-        m_bck_mark_index->push_back(index);
-        m_bck_mark_value->push_back(GET_PIXEL(image, index));
+        m_bck_mark_index.push_back(index);
+        m_bck_mark_value.push_back(GET_PIXEL(image, index));
       }
     }
   }

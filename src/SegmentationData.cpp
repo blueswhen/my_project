@@ -8,30 +8,22 @@ SegmentationData::SegmentationData(ImageData<int>* src_img,
                                    SegmentationData* half_sd)
     : m_source_image(src_img)
     , m_source_image_backup(src_img_bck)
-    , m_marked_image(new ImageData<int>())
+    , m_marked_image(ImageData<int>())
     , m_usr_sub_colour(usr_sub_colour)
     , m_usr_bck_colour(usr_bck_colour)
     , m_half_sd(half_sd)
     , m_is_cutted(false) {
-      m_marked_image->CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
+      m_marked_image.CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
     }
 
-SegmentationData::~SegmentationData() {
-  delete m_marked_image;
-  m_marked_image = NULL;
-}
-
 void SegmentationData::Reset() {
-  m_source_image->CopyImage(*m_source_image_backup);
+  *m_source_image = *m_source_image_backup;
   ClearMarkedImage();
   m_is_cutted = false;
 }
 
 void SegmentationData::ClearMarkedImage() {
-  delete m_marked_image;
-  m_marked_image = NULL;
-  m_marked_image = new ImageData<int>();
-  m_marked_image->CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
+  m_marked_image.CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
 }
 
 ImageData<int>* SegmentationData::GetSourceImage() {
@@ -47,7 +39,7 @@ SegmentationData* SegmentationData::GetHalfSegmentationData() {
 }
 
 ImageData<int>* SegmentationData::GetMarkedImage() {
-  return m_marked_image;
+  return &m_marked_image;
 }
 
 int SegmentationData::GetSubjectColour() {

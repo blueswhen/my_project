@@ -29,7 +29,7 @@ void ReadImage(const char* file_name, ImageData<int>* image_data) {
   image_data->m_file_name = file_name;
   int& width = image_data->m_width;
   int& height = image_data->m_height;
-  std::vector<int>* data = image_data->m_data;
+  std::vector<int>* data = &(image_data->m_data);
 
   IplImage* cv_image = cvLoadImage(file_name);
 
@@ -219,7 +219,7 @@ void MarkConnectedArea(const ImageData<uchar>& grad_image,
   for (int y = 1; y < height - 1; ++y) {
     for (int x = 1; x < width - 1; ++x) {
       int index = y * width + x;
-      int gradient = static_cast<int>((*grad_image.m_data)[index]);
+      int gradient = static_cast<int>((grad_image.m_data)[index]);
       int mark_value = GET_PIXEL(marked_image, index);
       if (mark_value == 0 && gradient <= max_threshold) {
         SET_PIXEL(marked_image, index, mark_num);
@@ -254,7 +254,7 @@ void Watershed(const ImageData<uchar>& grad_image,
         for (int i = 0; i < 4; ++i) {
           int arround_mark_value = GET_PIXEL(marked_image, arrounds[i]);
           if (arround_mark_value == 0) {
-            int grad_value = (*grad_image.m_data)[arrounds[i]];
+            int grad_value = (grad_image.m_data)[arrounds[i]];
             assert(grad_value > start_gradient && grad_value < 256);
             grad_queues[grad_value].push(arrounds[i]);
             SET_PIXEL(marked_image, arrounds[i], IN_QUEUE);
@@ -307,7 +307,7 @@ void Watershed(const ImageData<uchar>& grad_image,
     for (int i = 0; i < 4; ++i) {
       int mark_value = GET_PIXEL(marked_image, mark_arrounds[i]);
       if (mark_value == 0) {
-        int grad_value = static_cast<int>((*grad_image.m_data)[mark_arrounds[i]]);
+        int grad_value = static_cast<int>((grad_image.m_data)[mark_arrounds[i]]);
         assert(grad_value > start_gradient);
         grad_queues[grad_value].push(mark_arrounds[i]);
         queues_idx = std::min(queues_idx, grad_value);
@@ -817,14 +817,14 @@ void ExtractContourLine(const WatershedRegionGroup& wrg, ImageData<int>* source_
   }
   int region_count = wrg.GetRegionCount();
   for (int i = 0; i < region_count; ++i) {
-    WatershedRegionInfo* wri = (*wrg.m_regions)[i];
-    if (wri->m_scene == SUBJECT) {
-      for (int j = 0; j < wri->m_adjacent_regions.size(); ++j) {
-        WatershedRegionInfo* adj_wri = wri->m_adjacent_regions[j];
+    const WatershedRegionInfo& wri = GET_REGION_ITEM(wrg, i);
+    if (wri.m_scene == SUBJECT) {
+      for (int j = 0; j < wri.m_adjacent_regions.size(); ++j) {
+        WatershedRegionInfo* adj_wri = wri.m_adjacent_regions[j];
         if (adj_wri->m_scene == BACKGROUND) {
           int adj_num = adj_wri->m_region_num;
           const std::vector<int>& watershed_vec =
-            wri->m_watershed_points.find(adj_num)->second;
+            wri.m_watershed_points.find(adj_num)->second;
           for (int k = 0; k < watershed_vec.size(); ++k) {
             SET_PIXEL(source_image, watershed_vec[k], CONTOUR_LINE);
             SET_PIXEL(marked_image, watershed_vec[k], RED);
@@ -832,12 +832,12 @@ void ExtractContourLine(const WatershedRegionGroup& wrg, ImageData<int>* source_
         }
       }
     } else {
-      for (int j = 0; j < wri->m_adjacent_regions.size(); ++j) {
-        WatershedRegionInfo* adj_wri = wri->m_adjacent_regions[j];
+      for (int j = 0; j < wri.m_adjacent_regions.size(); ++j) {
+        WatershedRegionInfo* adj_wri = wri.m_adjacent_regions[j];
         if (adj_wri->m_scene == SUBJECT) {
           int adj_num = adj_wri->m_region_num;
           const std::vector<int>& watershed_vec =
-            wri->m_watershed_points.find(adj_num)->second;
+            wri.m_watershed_points.find(adj_num)->second;
           for (int k = 0; k < watershed_vec.size(); ++k) {
             SET_PIXEL(source_image, watershed_vec[k], CONTOUR_LINE);
             SET_PIXEL(marked_image, watershed_vec[k], RED);
@@ -891,8 +891,8 @@ void CreateSegImage(const ImageData<int>& marked_image,
         continue;
       }
       int region_index = mark_num - wrg.m_region_num_offset;
-      WatershedRegionInfo* wri = (*wrg.m_regions)[region_index];
-      if (wri->m_scene == SUBJECT) {
+      const WatershedRegionInfo& wri = GET_REGION_ITEM(wrg, region_index);
+      if (wri.m_scene == SUBJECT) {
         SET_PIXEL(seg_image, index, WHITE);
       } else {
         SET_PIXEL(seg_image, index, BLACK);
