@@ -16,6 +16,7 @@
 #include "include/WatershedRegion.h"
 #include "include/ui.h"
 #include "include/Gmm.h"
+#include "include/Graph.h"
 #include "include/maxflow-v3.03/block.h"
 #include "include/maxflow-v3.03/graph.h"
 #include "include/Segmentation.h"
@@ -166,7 +167,7 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   int height = image.GetHeight();
   int vtx_count = width * height;
   int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
-  GraphType graph(vtx_count, edge_count);
+  user::Graph<double> graph(vtx_count, edge_count);
 
   const double gammaDivSqrt2 = gamma / std::sqrt(2.0f);
   for(int y = 0; y < height; ++y) {
@@ -191,39 +192,38 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
         e1[0] = lambda;
         e1[1] = 0;
       }
-      graph.add_node();
       int vtx0 = BUILD_VTX(index);
-      graph.add_tweights(vtx0, e1[0], e1[1]);
+      graph.AddNode(vtx0, e1[0], e1[1]);
 
       // 8 neighbours
       if ((graph_vtx_map == NULL && x > 0) || IS_BUILD_EDGE(index - 1)) {
         int color_arr = GET_PIXEL(&image, y * width + x - 1);
         double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
         int vtx1 = BUILD_VTX(index - 1);
-        graph.add_edge(vtx0, vtx1, e2, e2);
+        graph.AddEdge(vtx0, vtx1, e2);
       }
-      if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
-        int color_arr = GET_PIXEL(&image, (y - 1) * width + x - 1);
-        double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
-        int vtx1 = BUILD_VTX(index -width - 1);
-        graph.add_edge(vtx0, vtx1, e2, e2);
-      }
+      // if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
+      //   int color_arr = GET_PIXEL(&image, (y - 1) * width + x - 1);
+      //   double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
+      //   int vtx1 = BUILD_VTX(index -width - 1);
+      //   graph.AddEdge(vtx0, vtx1, e2);
+      // }
       if ((graph_vtx_map == NULL && y > 0) || IS_BUILD_EDGE(index - width)) {
         int color_arr = GET_PIXEL(&image, (y - 1) * width + x);
         double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
         int vtx1 = BUILD_VTX(index - width);
-        graph.add_edge(vtx0, vtx1, e2, e2);
+        graph.AddEdge(vtx0, vtx1, e2);
       }
-      if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
-        int color_arr = GET_PIXEL(&image, (y - 1) * width + x + 1);
-        double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
-        int vtx1 = BUILD_VTX(index - width + 1);
-        graph.add_edge(vtx0, vtx1, e2, e2);
-      }
+      // if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
+      //   int color_arr = GET_PIXEL(&image, (y - 1) * width + x + 1);
+      //   double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
+      //   int vtx1 = BUILD_VTX(index - width + 1);
+      //   graph.AddEdge(vtx0, vtx1, e2);
+      // }
     }
   }
 
-  graph.maxflow();
+  graph.MaxFlow();
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
@@ -231,7 +231,7 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
       int marked_colour = GET_PIXEL(marked_image, index);
       if (marked_colour == PR_SUB || marked_colour == PR_BCK) {
         int vtx0 = BUILD_VTX(index);
-        if (graph.what_segment(vtx0) == GraphType::SOURCE) {
+        if (graph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, PR_SUB);
         } else {
           SET_PIXEL(marked_image, index, PR_BCK);

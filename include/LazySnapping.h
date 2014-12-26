@@ -40,6 +40,7 @@ class LazySnapping :public Segmentation {
   void LazySnappingForAllPixel(SegmentationData* sd, UserInput* uip);
 
  private:
+  void InitMarkedImage();
   virtual void InitMarkedImage(SegmentationData* sd, UserInput* uip);
   virtual void Cut(SegmentationData* sd, UserInput* uip, std::map<int, int>* graph_vtx_map);
   virtual void MakeTrimapForMarkedImage(ImageData<int>* marked_image, int band_width);

@@ -34,7 +34,12 @@ int main(int argc, char** argv) {
   }
   ImageData<int> src;
   utils::ReadImage(argv[1], &src);
-  ImageData<int> src_bk(src);
+  ImageData<int> src_bk;
+  if (argc == 3) {
+    utils::ReadImage(argv[2], &src_bk);
+  } else {
+    src_bk = src;
+  }
   ImageData<int> scale_50_src;
   ImageData<int> scale_25_src;
 
@@ -108,8 +113,8 @@ int main(int argc, char** argv) {
 
 exit_main:
     cv::destroyWindow(ui::WIN_NAME);
-    // utils::SaveImage(IMAGE_OUT_NAME, src);
-    utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
+    utils::SaveImage(IMAGE_OUT_NAME, src);
+    // utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_2, *scale_50_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_3, *scale_25_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME, scale_25_src);

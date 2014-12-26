@@ -3,13 +3,16 @@
 #define INCLUDE_GRAPH_H_
 
 #include <vector>
+#include <list>
 #include <queue>
+#include <deque>
 #include <stack>
 #include <stdlib.h>
 #include <assert.h>
 #include <limits.h>
 
 #include "include/ImageData.h"
+#include "include/CountTime.h"
 
 #define TERMINAL reinterpret_cast<Edge*>(1)
 #define ORPHAN reinterpret_cast<Edge*>(2)
@@ -23,13 +26,15 @@ class Graph {
   enum NodeState {
     SOURCE,
     SINK,
-    UNKNOWN
   };
   Graph(int max_nodes_number, int max_edges_number);
   void AddNode(int node_id, CapType source_capacity, CapType sink_capacity);
   void AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity);
+  double TestNodes();
+  void MergeNodes();
   void MaxFlow();
   bool IsBelongToSource(int node_id);
+  bool IsVtxCapacitySameSign(int vtx0_id, int vtx1_id);
 
  private:
   class Node;
@@ -39,33 +44,45 @@ class Graph {
       : m_dst_node(NULL)
       , m_edge_capacity(0)
       , m_rev_edge(NULL)
-      , m_next_edge(NULL) {}
+      , m_next_out_edge(NULL)
+      , m_is_delegate_edge(true) {}
     Node* m_dst_node;
     CapType m_edge_capacity;
     Edge* m_rev_edge;
     // next edge originated from the same node
-    Edge* m_next_edge;
+    Edge* m_next_out_edge;
+    // only delegate edge will be used
+    bool m_is_delegate_edge;
   };
 
   class Node {
    public:
-    Node() 
+    Node()
       : m_residue_capacity(0)
-      , m_node_state(UNKNOWN)
-      , m_first_child_edge(NULL)
+      , m_node_state(SINK)
+      , m_first_out_edge(NULL)
       , m_parent_edge(NULL)
       , m_timestamp(0)
       , m_terminal_dist(0)
-      , m_id(0) {}
+      , m_id(0)
+      , m_is_active(false)
+      , m_is_delegate_node(true) {}
     CapType m_residue_capacity;
     NodeState m_node_state;
-    Edge* m_first_child_edge;
+    Edge* m_first_out_edge;
     Edge* m_parent_edge;
     // the timestamp of the latest dist calculating 
     int m_timestamp;
     int m_terminal_dist;
     int m_id;
+    bool m_is_active;
+
+    // only delegate node will be calculate in max flow
+    bool m_is_delegate_node;
   };
+
+  Node* MergeToNextNode(Node* node);
+  void TerminalMerge(Node* node);
 
   std::vector<Node> m_nodes;
   std::vector<Edge> m_edges;
@@ -83,20 +100,15 @@ Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
 
 template <class CapType>
 void Graph<CapType>::AddNode(int node_id, CapType source_capacity, CapType sink_capacity) {
-  assert(node_id >= 0 && node_id < m_nodes.size() &&
-         m_nodes[node_id].m_residue_capacity == 0);
   m_flow += source_capacity < sink_capacity ? source_capacity : sink_capacity;
   CapType node_capacity = source_capacity - sink_capacity;
-  m_nodes[node_id].m_residue_capacity = node_capacity;
-  m_nodes[node_id].m_id = node_id;
+  Node& node = m_nodes[node_id];
+  node.m_residue_capacity = node_capacity;
+  node.m_id = node_id;
 }
 
 template <class CapType>
 void Graph<CapType>::AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity) {
-  assert(src_node_id >= 0 && src_node_id < m_nodes.size());
-  assert(dst_node_id >= 0 && dst_node_id < m_nodes.size());
-  assert(m_last_edge_index < m_edges.size());
-
   Edge* edge = &m_edges[m_last_edge_index++];
   Edge* rev_edge = &m_edges[m_last_edge_index++];
 
@@ -111,10 +123,11 @@ void Graph<CapType>::AddEdge(int src_node_id, int dst_node_id, CapType edge_capa
   Node* dst_node = &m_nodes[dst_node_id];
 
   assert(src_node != NULL && dst_node != NULL);
-  edge->m_next_edge = src_node->m_first_child_edge;
-  src_node->m_first_child_edge = edge;
-  rev_edge->m_next_edge = dst_node->m_first_child_edge;
-  dst_node->m_first_child_edge = rev_edge;
+  edge->m_next_out_edge = src_node->m_first_out_edge;
+  src_node->m_first_out_edge = edge;
+
+  rev_edge->m_next_out_edge = dst_node->m_first_out_edge;
+  dst_node->m_first_out_edge = rev_edge;
 }
 
 template <class CapType>
@@ -122,12 +135,21 @@ void Graph<CapType>::MaxFlow() {
   std::queue<Node*> active_nodes;
   std::queue<Node*> orphan_nodes;
 
+#define ADD_ACTIVE_NODE(node) \
+{ \
+  if (!node->m_is_active) { \
+    node->m_is_active = true; \
+    active_nodes.push(node); \
+  } \
+}
+
 #define GET_ACTIVE_NODE() \
 ({ \
   Node* return_value = NULL; \
   while (!active_nodes.empty()) { \
     return_value = active_nodes.front(); \
     active_nodes.pop(); \
+    return_value->m_is_active = false; \
     if (return_value->m_parent_edge) { \
       break; \
     } \
@@ -138,12 +160,14 @@ void Graph<CapType>::MaxFlow() {
   // get active nodes
   for (int i = 0; i < m_nodes.size(); ++i) {
     Node* node = &m_nodes[i];
+    if (!node->m_is_delegate_node) {
+      continue;
+    }
     if (node->m_residue_capacity != 0) {
       node->m_node_state = node->m_residue_capacity < 0 ? SINK : SOURCE;
       node->m_parent_edge = TERMINAL;
-      node->m_timestamp = 0;
       node->m_terminal_dist = 1;
-      active_nodes.push(node);
+      ADD_ACTIVE_NODE(node);
     }
   }
 
@@ -153,11 +177,17 @@ void Graph<CapType>::MaxFlow() {
   while(!active_nodes.empty()) {
     if (meet_edge == NULL || at_node->m_parent_edge == NULL) {
       at_node = GET_ACTIVE_NODE();
+      if (at_node == NULL) {
+        break;
+      }
     }
     meet_edge = NULL;
     // grow source tree and sink tree
-    for (Edge* connected_edge = at_node->m_first_child_edge; connected_edge != NULL;
-         connected_edge = connected_edge->m_next_edge) {
+    for (Edge* connected_edge = at_node->m_first_out_edge; connected_edge != NULL;
+         connected_edge = connected_edge->m_next_out_edge) {
+      if (!connected_edge->m_is_delegate_edge) {
+        continue;
+      }
       CapType capacity = at_node->m_node_state == SINK ?
                          connected_edge->m_rev_edge->m_edge_capacity :
                          connected_edge->m_edge_capacity;
@@ -168,14 +198,13 @@ void Graph<CapType>::MaxFlow() {
           dst_node->m_timestamp = at_node->m_timestamp;
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
           dst_node->m_node_state = at_node->m_node_state;
-          active_nodes.push(dst_node);
-        } else if (dst_node->m_node_state != UNKNOWN &&
-            dst_node->m_node_state != at_node->m_node_state) {
+          ADD_ACTIVE_NODE(dst_node);
+        } else if (dst_node->m_node_state != at_node->m_node_state) {
           meet_edge = at_node->m_node_state == SINK ?
                       connected_edge->m_rev_edge : connected_edge;
           break;
         } else if (dst_node->m_timestamp <= at_node->m_timestamp &&
-            dst_node->m_terminal_dist > at_node->m_terminal_dist) {
+                   dst_node->m_terminal_dist > at_node->m_terminal_dist) {
           dst_node->m_parent_edge = connected_edge->m_rev_edge;
           dst_node->m_timestamp = at_node->m_timestamp;
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
@@ -187,13 +216,12 @@ void Graph<CapType>::MaxFlow() {
 
     if (meet_edge) {
       // augment path
-      CapType min_capacity = meet_edge->m_edge_capacity;
-      // first_edge[0] for source tree and first_edge[1] for sink tree
       Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
+	    CapType min_capacity = meet_edge -> m_edge_capacity;
+      // first_edge[0] for source tree and first_edge[1] for sink tree
       // find min capacity from path
       for (int i = 0; i < 2; ++i) {
         Node* parent_node = first_edge[i]->m_dst_node;
-        int k = 0;
         for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
              parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
           Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
@@ -202,19 +230,18 @@ void Graph<CapType>::MaxFlow() {
             min_capacity = cap;
           }
         }
-        CapType final_node_capacity = parent_node->m_residue_capacity > 0 ?
-                                      parent_node->m_residue_capacity :
-                                      -parent_node->m_residue_capacity;
+        CapType node_cap = parent_node->m_residue_capacity;
+        CapType final_node_capacity = i == 0 ? node_cap : -node_cap; 
         if (final_node_capacity < min_capacity) {
           min_capacity = final_node_capacity;
         }
       }
-
+      
       first_edge[0]->m_edge_capacity += min_capacity;
       first_edge[1]->m_edge_capacity -= min_capacity;
       for (int i = 0; i < 2; ++i) {
         Node* parent_node = first_edge[i]->m_dst_node;
-        int factor = i == 0 ? -1 : 1;
+        int factor = 2 * i - 1;
         for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
              parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
           parent_edge->m_edge_capacity += (-factor) * min_capacity;
@@ -240,8 +267,11 @@ void Graph<CapType>::MaxFlow() {
         int dist_min = INIFINITE_DIST;
         Edge* connected_edge_min = NULL;
 
-        for (Edge* connected_edge = orphan_node->m_first_child_edge; connected_edge != NULL;
-             connected_edge = connected_edge->m_next_edge) {
+        for (Edge* connected_edge = orphan_node->m_first_out_edge; connected_edge != NULL;
+             connected_edge = connected_edge->m_next_out_edge) {
+          if (!connected_edge->m_is_delegate_edge) {
+            continue;
+          }
           CapType capacity = orphan_node->m_node_state == SINK ?
                              connected_edge->m_edge_capacity :
                              connected_edge->m_rev_edge->m_edge_capacity;
@@ -289,8 +319,11 @@ void Graph<CapType>::MaxFlow() {
           orphan_node->m_timestamp = global_timestamp;
           orphan_node->m_terminal_dist = dist_min + 1;
         } else {
-          for (Edge* connected_edge = orphan_node->m_first_child_edge; connected_edge != NULL;
-               connected_edge = connected_edge->m_next_edge) {
+          for (Edge* connected_edge = orphan_node->m_first_out_edge; connected_edge != NULL;
+               connected_edge = connected_edge->m_next_out_edge) {
+            if (!connected_edge->m_is_delegate_edge) {
+              continue;
+            }
             Node* dst_node = connected_edge->m_dst_node;
             Edge* parent_edge = dst_node->m_parent_edge;
             if (dst_node->m_node_state == orphan_node->m_node_state && parent_edge) {
@@ -298,7 +331,7 @@ void Graph<CapType>::MaxFlow() {
                                  connected_edge->m_edge_capacity :
                                  connected_edge->m_rev_edge->m_edge_capacity;
               if (capacity) {
-                active_nodes.push(dst_node);
+                ADD_ACTIVE_NODE(dst_node);
               }
               if (parent_edge != TERMINAL && parent_edge != ORPHAN &&
                   parent_edge->m_dst_node == orphan_node) {
@@ -316,6 +349,17 @@ void Graph<CapType>::MaxFlow() {
 template <class CapType>
 bool Graph<CapType>::IsBelongToSource(int node_id) {
   return m_nodes[node_id].m_node_state == SOURCE;
+}
+
+template <class CapType>
+bool Graph<CapType>::IsVtxCapacitySameSign(int vtx0_id, int vtx1_id) {
+  CapType cap0 = m_nodes[vtx0_id].m_residue_capacity;
+  CapType cap1 = m_nodes[vtx1_id].m_residue_capacity;
+  if ((cap0 >= 0 && cap1 >= 0) || (cap0 <= 0 && cap1 <= 0)) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 }  // namespace user 

@@ -112,9 +112,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
                        ImageData<int>* marked_image,
                        std::map<int, int>* graph_vtx_map) {
 #define BUILD_VTX(index) \
-({ \
-  graph_vtx_map != NULL ? (*graph_vtx_map)[index] : index; \
-})
+  (graph_vtx_map != NULL ? (*graph_vtx_map)[index] : index)
 
 #define IS_BUILD_EDGE(index) \
   (graph_vtx_map != NULL && graph_vtx_map->find(index) != graph_vtx_map->end())
@@ -144,6 +142,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   double e1[2] = {0, 0};
   const double lamda = LAMDA;
   const double lamda_div_sqrt2 = LAMDA / std::sqrt(2.0f);
+  double time = 0;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
@@ -162,9 +161,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         e1[0] = bck_dist / sum_dist;
         e1[1] = sub_dist / sum_dist;
       } else if (marked_colour == SUBJECT) {
+        // continue;
         e1[0] = DBL_MAX;
         e1[1] = 0;
       } else {
+        // continue;
         e1[0] = 0;
         e1[1] = DBL_MAX;
       }
@@ -182,9 +183,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #if 1
       // 8 neighbours
       if ((graph_vtx_map == NULL && x > 0) || IS_BUILD_EDGE(index - 1)) {
+        int vtx1 = BUILD_VTX(index - 1);
         int near_colour = GET_PIXEL(&source_image, index - 1);
         double e2 = lamda / (COLOUR_DIST(colour, near_colour) + 0.01);
-        int vtx1 = BUILD_VTX(index - 1);
 #if MY_MAXFLOW
         graph.AddEdge(vtx0, vtx1, e2);
 #elif B_MAXFLOW
@@ -194,9 +195,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
       }
       if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
+        int vtx1 = BUILD_VTX(index - width - 1);
         int near_colour = GET_PIXEL(&source_image, index - width - 1);
         double e2 = lamda_div_sqrt2 / (COLOUR_DIST(colour, near_colour) + 0.01);
-        int vtx1 = BUILD_VTX(index - width - 1);
 #if MY_MAXFLOW
         graph.AddEdge(vtx0, vtx1, e2);
 #elif B_MAXFLOW
@@ -206,9 +207,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
       }
       if ((graph_vtx_map == NULL && y > 0) || IS_BUILD_EDGE(index - width)) {
+        int vtx1 = BUILD_VTX(index - width);
         int near_colour = GET_PIXEL(&source_image, index - width);
         double e2 = lamda / (COLOUR_DIST(colour, near_colour) + 0.01);
-        int vtx1 = BUILD_VTX(index - width);
 #if MY_MAXFLOW
         graph.AddEdge(vtx0, vtx1, e2);
 #elif B_MAXFLOW
@@ -218,9 +219,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
       }
       if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
+        int vtx1 = BUILD_VTX(index - width + 1);
         int near_colour = GET_PIXEL(&source_image, index - width + 1);
         double e2 = lamda_div_sqrt2 / (COLOUR_DIST(colour, near_colour) + 0.01);
-        int vtx1 = BUILD_VTX(index - width + 1);
 #if MY_MAXFLOW
         graph.AddEdge(vtx0, vtx1, e2);
 #elif B_MAXFLOW
@@ -233,12 +234,14 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
     }
   }
 
+#if 1
 #if MY_MAXFLOW
   graph.MaxFlow();
 #elif B_MAXFLOW
   graph.maxflow();
 #elif OPENCV_MAXFLOW
   graph.maxFlow();
+#endif
 #endif
 
 #if 1
@@ -295,6 +298,26 @@ void LazySnapping::InitMarkedImage(SegmentationData* sd, UserInput* uip) {
   }
   for (int i = 0; i < bck_mark_index->size(); ++i) {
     SET_PIXEL(marked_image, (*bck_mark_index)[i], BACKGROUND);
+  }
+}
+
+void LazySnapping::InitMarkedImage() {
+  ImageData<int>* ui_image = m_sd->GetSourceImage();
+  ImageData<int>* marked_image = m_sd->GetMarkedImage();
+  int width = marked_image->GetWidth();
+  int height = marked_image->GetHeight();
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      int index = y * width + x;
+      int ui_col = GET_PIXEL(ui_image, index);
+      if (ui_col == m_sd->GetSubjectColour()) {
+        SET_PIXEL(marked_image, index, SUBJECT);
+      } else if (ui_col == m_sd->GetBackgroundColour()) {
+        SET_PIXEL(marked_image, index, BACKGROUND);
+      } else {
+        SET_PIXEL(marked_image, index, UNDEFINE);
+      }
+    }
   }
 }
 
@@ -502,7 +525,10 @@ ImageData<int>* LazySnapping::GetUiImage() {
 }
 
 void LazySnapping::DoLeftButtonDown(int x, int y) {
-  m_usr_input->DrawFirstPointForSub(x, y);
+  InitMarkedImage();
+  UpdateSceneVector(m_sd, m_usr_input);
+  DoPartition();
+  // m_usr_input->DrawFirstPointForSub(x, y);
 }
 
 void LazySnapping::DoRightButtonDown(int x, int y) {
@@ -518,8 +544,8 @@ void LazySnapping::DoRightMouseMove(int x, int y) {
 }
 
 void LazySnapping::DoLeftButtonUp(int x, int y) {
-  m_usr_input->DrawSubjectFinish(x, y);
-  DoPartition();
+  // m_usr_input->DrawSubjectFinish(x, y);
+  // DoPartition();
 }
 
 void LazySnapping::DoRightButtonUp(int x, int y) {
