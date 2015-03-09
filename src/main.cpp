@@ -34,6 +34,7 @@ int main(int argc, char** argv) {
   }
   ImageData<int> src;
   utils::ReadImage(argv[1], &src);
+  ImageData<int> src2;
   ImageData<int> src_bk;
   if (argc == 3) {
     utils::ReadImage(argv[2], &src_bk);
@@ -54,9 +55,9 @@ int main(int argc, char** argv) {
   SegmentationData scale_50_sd(&scale_50_src, &scale_50_src_bk, SUB_COL, BCK_COL, &scale_25_sd);
   SegmentationData sd(&src, &src_bk, SUB_COL, BCK_COL, &scale_50_sd);
 
-  // Lines ln_25;
-  // Lines ln_50(&ln_25);
-  Lines ln_50;
+  Lines ln_25;
+  Lines ln_50(&ln_25);
+  // Lines ln_50;
   Lines ln(&ln_50);
   Square sr;
   LazySnapping ls(&sd, &ln);
@@ -113,8 +114,8 @@ int main(int argc, char** argv) {
 
 exit_main:
     cv::destroyWindow(ui::WIN_NAME);
-    utils::SaveImage(IMAGE_OUT_NAME, src);
-    // utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
+    // utils::SaveImage(IMAGE_OUT_NAME, src);
+    utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_2, *scale_50_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_3, *scale_25_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME, scale_25_src);

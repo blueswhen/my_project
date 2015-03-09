@@ -15,7 +15,7 @@ enum Scene {
   BACKGROUND = BLACK,
   SUBJECT = WHITE,
   UNDEFINE = GRAY,
-  IGNORED = BLUE,
+  IGNORED = COLOUR_PURPLE_RED,
   TEMP1 = GREEN,
   TEMP2 = RED,
 };
@@ -45,6 +45,12 @@ enum Direction {
   center_y * width + std::min(center_x + 1, width - 1), \
   std::max(center_y - 1, 0) * width + center_x, \
   std::min(center_y + 1, height - 1) * width + center_x, \
+}
+
+#define GET_XY(index, width) \
+{ \
+  index - (index / width) * width, \
+  index / width, \
 }
 
 #define GET_THREE_COORDINATE(colour) \
@@ -151,6 +157,8 @@ void ExtractMarkPoints(const ImageData<int>& mask_image,
 void Scale(const ImageData<int>& src_image, ImageData<int>* dst_image, double scale_factor);
 void HalfScale(const ImageData<int>& src_image, ImageData<int>* dst_image);
 void DoubleScale(const ImageData<int>& src_image, ImageData<int>* dst_image);
+void SetSearchOrder(int* index, int x_cen, int y_cen,
+                    int previous_index_cen, int image_width, int image_height);
 
 }  // namespace utils
 

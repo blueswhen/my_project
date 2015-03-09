@@ -21,7 +21,6 @@ class ImageData {
   friend void utils::ReadImage(const char* file_name, ImageData<int>* image_data);
 
   ImageData();
-  ImageData(const ImageData& image_data);
   bool IsEmpty() const;
   void CreateEmptyImage(int width, int height);
   const char* GetFileName() const;
@@ -46,14 +45,6 @@ ImageData<T>::ImageData()
   , m_height(0)
   , m_data(std::vector<T>(0))
   , m_random_seed(-1) {}
-
-template <class T>
-ImageData<T>::ImageData(const ImageData<T>& image_data)
-  : m_file_name(image_data.m_file_name)
-  , m_width(image_data.m_width)
-  , m_height(image_data.m_height)
-  , m_data(image_data.m_data)
-  , m_random_seed(image_data.m_random_seed) {}
 
 template <class T>
 bool ImageData<T>::IsEmpty() const {

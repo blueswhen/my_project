@@ -338,6 +338,8 @@ private:
 	node				*queue_first[2], *queue_last[2];	// list of active nodes
 	nodeptr				*orphan_first, *orphan_last;		// list of pointers to orphans
 	int					TIME;								// monotonically increasing global counter
+  int path;
+  int orphan_path;
 
 	/////////////////////////////////////////////////////////////////////////
 
@@ -876,6 +878,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	bottleneck = middle_arc -> r_cap;
 	for (i=middle_arc->sister->head; ; i=a->head)
 	{
+    path++;
 		a = i -> parent;
 		if (a == TERMINAL) break;
 		if (bottleneck > a->sister->r_cap) bottleneck = a -> sister -> r_cap;
@@ -884,6 +887,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	/* 1b - the sink tree */
 	for (i=middle_arc->head; ; i=a->head)
 	{
+    path++;
 		a = i -> parent;
 		if (a == TERMINAL) break;
 		if (bottleneck > a->r_cap) bottleneck = a -> r_cap;
@@ -1094,6 +1098,8 @@ template <typename captype, typename tcaptype, typename flowtype>
 template <typename captype, typename tcaptype, typename flowtype> 
 	flowtype Graph<captype,tcaptype,flowtype>::maxflow(bool reuse_trees, Block<node_id>* _changed_list)
 {
+  path = 0;
+  orphan_path = 0;
 	node *i, *j, *current_node = NULL;
 	arc *a;
 	nodeptr *np, *np_next;
@@ -1200,6 +1206,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 
 				while ((np=orphan_first))
 				{
+          orphan_path++;
 					orphan_first = np -> next;
 					i = np -> ptr;
 					nodeptr_block -> Delete(np);
@@ -1223,6 +1230,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 
 	maxflow_iteration ++;
+  printf("path = %d, orphan_path = %d\n", path, orphan_path);
 	return flow;
 }
 

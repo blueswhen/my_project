@@ -16,6 +16,7 @@
 #include "include/WatershedRegion.h"
 #include "include/ui.h"
 #include "include/Gmm.h"
+#include "include/FGraph.h"
 #include "include/Graph.h"
 #include "include/maxflow-v3.03/block.h"
 #include "include/maxflow-v3.03/graph.h"
@@ -38,10 +39,6 @@ enum GrabScene {
   PR_BCK = 2,
   PR_SUB = 3 
 };
-
-ImageData<int>* GrabCut::GetUiImage() {
-  return m_sd->GetSourceImage();
-}
 
 void GrabCut::DoLeftButtonDown(int x, int y) {
   m_usr_input->DrawFirstPointForSub(x, y);
@@ -112,11 +109,11 @@ void AssignGmmsComponents(const ImageData<int>& image, const ImageData<int>& mar
   for(int y = 0; y < height; ++y) {
     for(int x = 0; x < width; ++x) {
       int index = y * width + x;
-      int color = GET_PIXEL(&image, index);
+      int colour = GET_PIXEL(&image, index);
       int marked_colour = GET_PIXEL(&marked_image, index);
       (*comp_idxs)[index] = marked_colour == BCK || marked_colour == PR_BCK ?
-                            background_gmm->WhichComponent(color) :
-                            subject_gmm->WhichComponent(color);
+                            background_gmm->WhichComponent(colour) :
+                            subject_gmm->WhichComponent(colour);
     }
   }
 }
@@ -152,9 +149,23 @@ void LearnGmms(const ImageData<int>& image, const ImageData<int>& marked_image,
   subject_gmm->EndLearning();
 }
 
+class EdgePunishItem {
+ public:
+  EdgePunishItem(double gamma, double beta)
+    : m_gamma(gamma)
+    , m_beta(beta) {}
+  double operator()(int src_node_colour, int dst_node_colour) {
+    return m_gamma * exp(-m_beta * COLOUR_DIST_SQUARE(src_node_colour, dst_node_colour));
+  }
+ private:
+  double m_gamma;
+  double m_beta;
+};
+
 void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
                       const Gmm& background_gmm, const Gmm& subject_gmm,
-                      double lambda, double beta, double gamma, std::map<int, int>* graph_vtx_map) {
+                      double lambda, double beta, double gamma,
+                      std::map<int, int>* graph_vtx_map) {
 #define BUILD_VTX(index) \
 ({ \
   graph_vtx_map != NULL ? (*graph_vtx_map)[index] : index; \
@@ -168,12 +179,15 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   int vtx_count = width * height;
   int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
   user::Graph<double> graph(vtx_count, edge_count);
+  // user::Graph<double> graph(vtx_count, edge_count);
+  // EdgePunishItem epi(gamma, beta);
+  // FGraph<double, EdgePunishItem> fgraph(vtx_count, edge_count, width, height, epi);
 
   const double gammaDivSqrt2 = gamma / std::sqrt(2.0f);
   for(int y = 0; y < height; ++y) {
     for(int x = 0; x < width; ++x) {
       int index = y * width + x;
-      int color = GET_PIXEL(&image, index);
+      int colour = GET_PIXEL(&image, index);
       int marked_colour = GET_PIXEL(marked_image, index);
       if (marked_colour == IGNORED) {
         continue;
@@ -183,8 +197,8 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
       // e1[0] is background, e1[1] is subject
       double e1[2] = {0, 0};
       if (marked_colour == PR_SUB || marked_colour == PR_BCK) {
-        e1[0] = -log(background_gmm.SceneProbability(color));
-        e1[1] = -log(subject_gmm.SceneProbability(color));
+        e1[0] = -log(background_gmm.SceneProbability(colour));
+        e1[1] = -log(subject_gmm.SceneProbability(colour));
       } else if (marked_colour == BCK) {
         e1[0] = 0;
         e1[1] = lambda;
@@ -194,36 +208,41 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
       }
       int vtx0 = BUILD_VTX(index);
       graph.AddNode(vtx0, e1[0], e1[1]);
+      // fgraph.AddNode(vtx0, e1[0], e1[1], colour);
+      // fgraph.AddActiveNodes(x, y);
 
+#if 1
       // 8 neighbours
       if ((graph_vtx_map == NULL && x > 0) || IS_BUILD_EDGE(index - 1)) {
-        int color_arr = GET_PIXEL(&image, y * width + x - 1);
-        double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
+        int colour_arr = GET_PIXEL(&image, y * width + x - 1);
+        double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
         int vtx1 = BUILD_VTX(index - 1);
         graph.AddEdge(vtx0, vtx1, e2);
       }
-      // if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
-      //   int color_arr = GET_PIXEL(&image, (y - 1) * width + x - 1);
-      //   double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
-      //   int vtx1 = BUILD_VTX(index -width - 1);
-      //   graph.AddEdge(vtx0, vtx1, e2);
-      // }
+      if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
+        int colour_arr = GET_PIXEL(&image, (y - 1) * width + x - 1);
+        double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
+        int vtx1 = BUILD_VTX(index -width - 1);
+        graph.AddEdge(vtx0, vtx1, e2);
+      }
       if ((graph_vtx_map == NULL && y > 0) || IS_BUILD_EDGE(index - width)) {
-        int color_arr = GET_PIXEL(&image, (y - 1) * width + x);
-        double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
+        int colour_arr = GET_PIXEL(&image, (y - 1) * width + x);
+        double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
         int vtx1 = BUILD_VTX(index - width);
         graph.AddEdge(vtx0, vtx1, e2);
       }
-      // if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
-      //   int color_arr = GET_PIXEL(&image, (y - 1) * width + x + 1);
-      //   double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(color, color_arr));
-      //   int vtx1 = BUILD_VTX(index - width + 1);
-      //   graph.AddEdge(vtx0, vtx1, e2);
-      // }
+      if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
+        int colour_arr = GET_PIXEL(&image, (y - 1) * width + x + 1);
+        double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
+        int vtx1 = BUILD_VTX(index - width + 1);
+        graph.AddEdge(vtx0, vtx1, e2);
+      }
+#endif
     }
   }
 
   graph.MaxFlow();
+  // fgraph.MaxFlow();
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
@@ -293,7 +312,7 @@ void GrabCut::InitMarkedImage(SegmentationData* sd, UserInput* uip) {
   }
 }
 
-void GrabCut::Cut(SegmentationData* sd, UserInput* uip, std::map<int, int>* graph_vtx_map) {
+void GrabCut::Cut(SegmentationData* sd, UserInput* uip) {
   assert(sd != NULL && uip != NULL);
   Segmentation::RemoveLastResult(sd);
   // get user input data, these code needn't to change
@@ -327,7 +346,7 @@ void GrabCut::Cut(SegmentationData* sd, UserInput* uip, std::map<int, int>* grap
                          &background_gmm, &subject_gmm, &comp_idxs);
     LearnGmms(*source_image, *marked_image, comp_idxs, &background_gmm, &subject_gmm);
     GraphCutWithGrab(*source_image, marked_image, background_gmm, subject_gmm,
-                     lambda, beta, gamma, graph_vtx_map);
+                     lambda, beta, gamma, NULL);
   }
 
   CreateFinalMarkedImage(marked_image);
@@ -341,7 +360,7 @@ void GrabCut::MakeTrimapForMarkedImage(ImageData<int>* marked_image, int band_wi
 void GrabCut::UpdateSceneVector(SegmentationData* sd, UserInput* uip) {
 }
 
-void GrabCut::MakeGraphVtx(const ImageData<int>& marked_image, std::map<int, int>* graph_vtx_map) {
+void GrabCut::MakeGraphVtx(const ImageData<int>& marked_image) {
 }
 
 double GetEnergyRegionItem(int colour, Scene scn) {

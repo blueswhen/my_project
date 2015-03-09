@@ -13,7 +13,8 @@
 
 Segmentation::Segmentation(SegmentationData* sd, UserInput* usr_input)
   : m_sd(sd)
-  , m_usr_input(usr_input) {
+  , m_usr_input(usr_input)
+  , m_graph_vtx_map(NULL) {
   m_usr_input->SetSegmentationData(sd);
 
   SegmentationData* half_sd = m_sd->GetHalfSegmentationData();
@@ -24,6 +25,14 @@ Segmentation::Segmentation(SegmentationData* sd, UserInput* usr_input)
     half_uip = half_uip->GetHalfScaleUserInput();
     half_sd = half_sd->GetHalfSegmentationData();
   }
+}
+
+ImageData<int>* Segmentation::GetUiImage() {
+  return m_sd->GetSourceImage();
+}
+
+ImageData<int>* Segmentation::GetMarkedImage() {
+  return m_sd->GetMarkedImage();
 }
 
 void Segmentation::ResetUserInput() {
@@ -116,17 +125,16 @@ void Segmentation::SegmentationForAllPixel(SegmentationData* sd, UserInput* uip)
     return;
   }
   InitMarkedImage(sd, uip);
-  Cut(sd, uip, NULL);
+  Cut(sd, uip);
 }
 
-void Segmentation::UncoarsenMarkedImage(SegmentationData* sd, UserInput* uip,
-                                        std::map<int, int>* graph_vtx_map, int band_width) {
+void Segmentation::UncoarsenMarkedImage(SegmentationData* sd, UserInput* uip, int band_width) {
   ImageData<int>* half_marked_image = sd->GetHalfSegmentationData()->GetMarkedImage();
   ImageData<int>* marked_image = sd->GetMarkedImage();
   utils::DoubleScale(*half_marked_image, marked_image);
   MakeTrimapForMarkedImage(marked_image, band_width);
   UpdateSceneVector(sd, uip);
-  MakeGraphVtx(*marked_image, graph_vtx_map);
+  MakeGraphVtx(*marked_image);
 }
 
 void Segmentation::SegmentationWithCoarsen() {
@@ -154,9 +162,11 @@ void Segmentation::SegmentationWithCoarsen() {
       break;
     }
 
-    std::map<int, int> graph_vtx_map;
-    UncoarsenMarkedImage(*itr_sd, *itr_uip, &graph_vtx_map, band_width);
-    Cut(*itr_sd, *itr_uip, &graph_vtx_map);
+    m_graph_vtx_map = new std::unordered_map<int, int>();
+    UncoarsenMarkedImage(*itr_sd, *itr_uip, band_width);
+    Cut(*itr_sd, *itr_uip);
+    delete m_graph_vtx_map;
+    m_graph_vtx_map = NULL;
   }
 }
 

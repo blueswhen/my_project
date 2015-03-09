@@ -3,10 +3,12 @@
 
 #include <vector>
 #include <map>
+#include <unordered_map>
 #include <stdio.h>
 #include <float.h>
 #include <assert.h>
 #include <opencv/highgui.h>
+#include <pthread.h>
 
 #include "include/ImageData.h"
 #include "include/utils.h"
@@ -17,6 +19,7 @@
 #include "include/Segmentation.h"
 #include "include/SegmentationData.h"
 #include "include/UserInput.h"
+#include "include/FGraph.h"
 #include "include/Graph.h"
 #include "include/gcgraph.hpp"
 #include "include/maxflow-v3.03/graph.h"
@@ -27,12 +30,14 @@
 #define K_NUM 60
 #define ITER 10
 #define LAMDA 60
+
 typedef Graph<double, double, double> GraphType;
+typedef double (*EPF)(int src_node_colour, int dst_node_colour);
 
 using namespace cv;
 
 inline double GetColourDistence(double c_mean[3],
-                         const std::vector<std::vector<double> >& k_means) {
+                                const std::vector<std::vector<double> >& k_means) {
   double min = DBL_MAX;
   int n = k_means.size();
   for (int i = 0; i < n; ++i) {
@@ -45,9 +50,13 @@ inline double GetColourDistence(double c_mean[3],
 }
 
 inline double GetColourDistence(const int& colour,
-                         const std::vector<std::vector<double> >& k_means) {
-  double rgb[3] = GET_THREE_COORDINATE(colour);
-  return GetColourDistence(rgb, k_means);
+                                const std::vector<std::vector<double> >& k_means) {
+  int rgb[3] = GET_THREE_COORDINATE(colour);
+  double d_rgb[3];
+  d_rgb[0] = static_cast<double>(rgb[0]);
+  d_rgb[1] = static_cast<double>(rgb[1]);
+  d_rgb[2] = static_cast<double>(rgb[2]);
+  return GetColourDistence(d_rgb, k_means);
 }
 
 void GraphCutBaseWatershed(const std::vector<std::vector<double> >& k_means_sub,
@@ -92,7 +101,7 @@ void GraphCutBaseWatershed(const std::vector<std::vector<double> >& k_means_sub,
     }
   }
 
-  graph.maxflow();
+  // graph.maxflow();
 
   for (int i = 0; i < region_count; ++i) {
     WatershedRegionInfo& wri = GET_REGION_ITEM(*wrg, i);
@@ -106,11 +115,15 @@ void GraphCutBaseWatershed(const std::vector<std::vector<double> >& k_means_sub,
   }
 }
 
+double EdgePunishItem(int src_node_colour, int dst_node_colour) {
+  return LAMDA / (COLOUR_DIST(src_node_colour, dst_node_colour) + 0.01);
+}
+
 void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
                        const std::vector<std::vector<double> >& k_means_bck,
                        const ImageData<int>& source_image,
                        ImageData<int>* marked_image,
-                       std::map<int, int>* graph_vtx_map) {
+                       std::unordered_map<int, int>* graph_vtx_map) {
 #define BUILD_VTX(index) \
   (graph_vtx_map != NULL ? (*graph_vtx_map)[index] : index)
 
@@ -125,10 +138,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   int vtx_count = width * height;
   int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
 
-#define MY_MAXFLOW 1
+#define MY_MAXFLOW 0
 #define B_MAXFLOW 0
 #define OPENCV_MAXFLOW 0
 
+  // FGraph<double> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #if MY_MAXFLOW
   user::Graph<double> graph(vtx_count, edge_count);
 #elif B_MAXFLOW
@@ -136,6 +150,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #elif OPENCV_MAXFLOW
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
+#else
+  FGraph<double, EPF> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #endif
 
   // e1[0] is background, e1[1] is subject
@@ -161,15 +177,15 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         e1[0] = bck_dist / sum_dist;
         e1[1] = sub_dist / sum_dist;
       } else if (marked_colour == SUBJECT) {
-        // continue;
         e1[0] = DBL_MAX;
         e1[1] = 0;
       } else {
-        // continue;
         e1[0] = 0;
         e1[1] = DBL_MAX;
       }
       int vtx0 = BUILD_VTX(index);
+      // fgraph.AddNode(vtx0, e1[0], e1[1], colour);
+      // fgraph.AddActiveNodes(x, y);
 #if MY_MAXFLOW
       graph.AddNode(vtx0, e1[0], e1[1]);
 #elif B_MAXFLOW
@@ -178,6 +194,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #elif OPENCV_MAXFLOW
       graph.addVtx();
       graph.addTermWeights(index, e1[0], e1[1]);
+#else
+      fgraph.AddNode(vtx0, e1[0], e1[1], colour);
+      fgraph.AddActiveNodes(x, y);
 #endif
 
 #if 1
@@ -241,6 +260,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   graph.maxflow();
 #elif OPENCV_MAXFLOW
   graph.maxFlow();
+#else
+  fgraph.MaxFlow();
 #endif
 #endif
 
@@ -251,6 +272,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       int marked_colour = GET_PIXEL(marked_image, index);
       if (marked_colour != IGNORED) {
         int vtx0 = BUILD_VTX(index);
+        // if (fgraph.IsBelongToSource(vtx0)) {
+        //   SET_PIXEL(marked_image, index, SUBJECT);
+        // } else {
+        //   SET_PIXEL(marked_image, index, BACKGROUND);
+        // }
 #if MY_MAXFLOW
         if (graph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
@@ -265,6 +291,12 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         }
 #elif OPENCV_MAXFLOW
         if (graph.inSourceSegment(vtx0)) {
+          SET_PIXEL(marked_image, index, SUBJECT);
+        } else {
+          SET_PIXEL(marked_image, index, BACKGROUND);
+        }
+#else
+        if (fgraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
@@ -321,7 +353,7 @@ void LazySnapping::InitMarkedImage() {
   }
 }
 
-void LazySnapping::Cut(SegmentationData* sd, UserInput* uip, std::map<int, int>* graph_vtx_map) {
+void LazySnapping::Cut(SegmentationData* sd, UserInput* uip) {
   assert(sd != NULL && uip != NULL);
   Segmentation::RemoveLastResult(sd);
   // get user input data, these code needn't to change
@@ -363,7 +395,7 @@ void LazySnapping::Cut(SegmentationData* sd, UserInput* uip, std::map<int, int>*
     GraphCutBaseWatershed(k_means_sub, k_means_bck, &wrg);
     utils::ExtractContourLine(wrg, ui_image, marked_image);
   } else {
-    GraphCutBasePixel(k_means_sub, k_means_bck, *source_image, marked_image, graph_vtx_map);
+    GraphCutBasePixel(k_means_sub, k_means_bck, *source_image, marked_image, m_graph_vtx_map);
     utils::ExtractContourLine(ui_image, marked_image);
   }
   sd->SetCutStatus(true);
@@ -467,7 +499,7 @@ void LazySnapping::MakeTrimapForMarkedImage(ImageData<int>* marked_image, int ba
   }
 }
 
-void LazySnapping::MakeGraphVtx(const ImageData<int>& marked_image, std::map<int, int>* graph_vtx_map) {
+void LazySnapping::MakeGraphVtx(const ImageData<int>& marked_image) {
   int width = marked_image.GetWidth();
   int height = marked_image.GetHeight();
   int i = 0;
@@ -476,7 +508,8 @@ void LazySnapping::MakeGraphVtx(const ImageData<int>& marked_image, std::map<int
       int index = y * width + x;
       int colour = GET_PIXEL(&marked_image, index);
       if (colour != IGNORED) {
-        (*graph_vtx_map)[index] = i++;
+        assert(m_graph_vtx_map != NULL);
+        (*m_graph_vtx_map)[index] = i++;
       }
     }
   }
@@ -520,15 +553,18 @@ void LazySnapping::DoPartition() {
   ct.PrintTime();
 }
 
-ImageData<int>* LazySnapping::GetUiImage() {
-  return m_sd->GetSourceImage();
+void* fun(void* arg) {
+  LazySnapping* ls = (LazySnapping*)arg;
+  ls->DoPartition();
 }
 
 void LazySnapping::DoLeftButtonDown(int x, int y) {
   InitMarkedImage();
-  UpdateSceneVector(m_sd, m_usr_input);
-  DoPartition();
   // m_usr_input->DrawFirstPointForSub(x, y);
+  UpdateSceneVector(m_sd, m_usr_input);
+  // DoPartition();
+  pthread_t id;
+  pthread_create(&id, NULL, fun, this);
 }
 
 void LazySnapping::DoRightButtonDown(int x, int y) {
@@ -561,39 +597,3 @@ void LazySnapping::ResetUserInput() {
 void LazySnapping::SetLazySnappingMethod(LazySnappingType lst) {
   m_lazy_type = lst;
 }
-
-#if 0
-double LazySnapping::GetEnergyRegionItem(int colour, Scene scn) {
-  double sub_dist = GetColourDistence(colour, *m_k_means_sub);
-  double bck_dist = GetColourDistence(colour, *m_k_means_bck);
-  double sum_dist = sub_dist + bck_dist;
-  if (scn == SUBJECT) {
-    return sub_dist / sum_dist;
-  } else if (scn == BACKGROUND) {
-    return bck_dist / sum_dist;
-  } else {
-    printf("error: the scene is wrong\n");
-    return 0;
-  }
-}
-
-double LazySnapping::GetEnergyBoundryItem(int colour, int near_colour, Direction drc) {
-  return LAMDA / (COLOUR_DIST(colour, near_colour) + 0.01);
-}
-
-void LazySnapping::SegmentImageByGraph(const GrapyType& graph, ImageData<int>* marked_image) {
-  assert(marked_image != NULL && marked_image->IsEmpty() == false);
-  int width = marked_image->GetWidth();
-  int height = marked_image->GetHeight();
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < width; ++x) {
-      int index = y * width + x;
-      if (graph.what_segment(index) == GraphType::SOURCE) {
-        SET_PIXEL(marked_image, index, SUBJECT);
-      } else {
-        SET_PIXEL(marked_image, index, BACKGROUND);
-      }
-    }
-  }
-}
-#endif

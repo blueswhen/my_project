@@ -2,7 +2,8 @@
 
 CXX = g++
 LIBS = -lopencv_core -lopencv_highgui -lopencv_imgproc
-INCS = -I.
+INCS = -I. -std=c++11 -pthread
+CXXFLAGS = -O3
 
 lazysnapping : \
   include/utils.h \
@@ -21,6 +22,7 @@ lazysnapping : \
   include/GrabCut.h \
   include/Gmm.h \
 	include/Graph.h \
+	include/FGraph.h \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \
@@ -35,7 +37,7 @@ lazysnapping : \
   src/GrabCut.cpp \
   src/UserInput.cpp \
   src/Gmm.cpp
-	$(CXX) $^ $(LIBS) $(INCS) -o $@ -O2
+	$(CXX) $(CXXFLAGS) $^ $(LIBS) $(INCS) -o $@
 
 clean :
 	rm -f lazysnapping

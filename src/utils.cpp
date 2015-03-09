@@ -966,6 +966,9 @@ void Scale(const ImageData<int>& src_image, ImageData<int>* dst_image, double sc
         int index = y * src_width + x;
         int colour = GET_PIXEL(&src_image, index);
         SET_PIXEL(dst_image, k++, colour);
+        if (k == dst_width * dst_height) {
+          return;
+        }
       }
     }
   }
@@ -976,7 +979,109 @@ void HalfScale(const ImageData<int>& src_image, ImageData<int>* dst_image) {
 }
 
 void DoubleScale(const ImageData<int>& src_image, ImageData<int>* dst_image) {
-  utils::Scale(src_image, dst_image, 2);
+  Scale(src_image, dst_image, 2);
+}
+
+void SetSearchOrder(int* index, int x_cen, int y_cen,
+                    int previous_index_cen, int image_width, int image_height) {
+  int index_cen = y_cen * image_width + x_cen;
+  int x = x_cen;
+  int y = y_cen;
+  if (previous_index_cen == -1) {
+    index[0] = y * image_width + std::max(0, x - 1);
+    index[1] = std::max(y - 1, 0) * image_width + x;
+    index[2] = y * image_width + std::min(image_width - 1, x + 1);
+    index[3] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[4] = std::max(y - 1, 0) * image_width + std::max(0, x - 1);
+    index[5] = std::max(y - 1, 0) * image_width + std::min(image_width - 1, x + 1);
+    index[6] = std::min(y + 1, image_height - 1) * image_width + std::min(image_width - 1, x + 1);
+    index[7] = std::min(y + 1, image_height - 1) * image_width + std::max(0, x - 1);
+    return;
+  }
+#if 1
+  if (previous_index_cen == index_cen + image_width - 1) {
+    index[0] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[1] = y * image_width + std::min(x + 1, image_width - 1);
+    index[2] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[3] = std::max(y - 1, 0) * image_width + x;
+    index[4] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[5] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[6] = y * image_width + std::max(x - 1, 0);
+    index[7] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+  } else if (previous_index_cen == index_cen + image_width) {
+    index[0] = y * image_width + std::min(x + 1, image_width - 1);
+    index[1] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[2] = std::max(y - 1, 0) * image_width + x;
+    index[3] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[4] = y * image_width + std::max(x - 1, 0);
+    index[5] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[6] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[7] = std::min(y + 1, image_height - 1) * image_width + x;
+  } else if (previous_index_cen == index_cen + image_width + 1) {
+    index[0] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[1] = std::max(y - 1, 0) * image_width + x;
+    index[2] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[3] = y * image_width + std::max(x - 1, 0);
+    index[4] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[5] = y * image_width + std::min(x + 1, image_width - 1);
+    index[6] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[7] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+  } else if (previous_index_cen == index_cen - 1) {
+    index[0] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[1] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[2] = y * image_width + std::min(x + 1, image_width - 1);
+    index[3] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[4] = std::max(y - 1, 0) * image_width + x;
+    index[5] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[6] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[7] = y * image_width + std::max(x - 1, 0);
+  } else if (previous_index_cen == index_cen + 1) {
+    index[0] = std::max(y - 1, 0) * image_width + x;
+    index[1] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[2] = y * image_width + std::max(x - 1, 0);
+    index[3] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[4] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[5] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[6] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[7] = y * image_width + std::min(x + 1, image_width - 1);
+  } else if (previous_index_cen == index_cen - image_width - 1) {
+    index[0] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[1] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[2] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[3] = y * image_width + std::min(x + 1, image_width - 1);
+    index[4] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[5] = y * image_width + std::max(x - 1, 0);
+    index[6] = std::max(y - 1, 0) * image_width + x;
+    index[7] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+  } else if (previous_index_cen == index_cen - image_width) {
+    index[0] = y * image_width + std::max(x - 1, 0);
+    index[1] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[2] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[3] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[4] = y * image_width + std::min(x + 1, image_width - 1);
+    index[5] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[6] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+    index[7] = std::max(y - 1, 0) * image_width + x;
+  } else if (previous_index_cen == index_cen + 1 - image_width) {
+    index[0] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[1] = y * image_width + std::max(x - 1, 0);
+    index[2] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[3] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[4] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[5] = std::max(y - 1, 0) * image_width + x;
+    index[6] = y * image_width + std::min(x + 1, image_width - 1);
+    index[7] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+  } else {
+    index[0] = std::max(y - 1, 0) * image_width + std::max(x - 1, 0);
+    index[1] = y * image_width + std::max(x - 1, 0);
+    index[2] = std::min(y + 1, image_height - 1) * image_width + std::max(x - 1, 0);
+    index[3] = std::min(y + 1, image_height - 1) * image_width + x;
+    index[4] = std::min(y + 1, image_height - 1) * image_width + std::min(x + 1, image_width - 1);
+    index[5] = std::max(y - 1, 0) * image_width + x;
+    index[6] = y * image_width + std::min(x + 1, image_width - 1);
+    index[7] = std::max(y - 1, 0) * image_width + std::min(x + 1, image_width - 1);
+  }
+#endif
 }
 
 }  // namespace utils

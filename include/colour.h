@@ -6,6 +6,7 @@
 #define WHITE 0x00ffffff
 #define BLACK 0
 #define GRAY 0x00808080
+#define YELLOW 0x00ffff00
 // 16 colours
 #define COLOUR_YELLOW 0x00ffff00
 #define COLOUR_PURPLE 0x00ff00ff
