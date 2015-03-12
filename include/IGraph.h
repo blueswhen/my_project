@@ -1,11 +1,13 @@
 // Copyright 2014-12 sxniu
-#ifndef INCLUDE_GRAPH_H_
-#define INCLUDE_GRAPH_H_
+#ifndef INCLUDE_IGRAPH_H_
+#define INCLUDE_IGRAPH_H_
 
 #include <vector>
 #include <list>
 #include <queue>
 #include <deque>
+#include <set>
+#include <unordered_map>
 #include <stack>
 #include <stdlib.h>
 #include <assert.h>
@@ -18,10 +20,35 @@
 #define ORPHAN reinterpret_cast<Edge*>(2)
 #define INIFINITE_DIST INT_MAX
 
-namespace user {
+#define HALF_NEIGHBOUR 4
+#define NEIGHBOUR 8
+#define HALF_NEIGHBOUR_ARR_INDEX FOUR_ARR_INDEX
+#define NEIGHBOUR_ARR_INDEX EIGHT_ARR_INDEX
 
-template <class CapType>
-class Graph {
+const double igraph_div_sqrt2 = 1 / sqrt(2.0f);
+
+#define FOUR_ARR_INDEX(node_x, node_y, image_width, image_height) \
+{ \
+  node_y * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + node_x, \
+  std::max(node_y - 1, 0) * image_width + std::min(image_width - 1, node_x + 1) \
+}
+
+#define EIGHT_ARR_INDEX(node_x, node_y, image_width, image_height) \
+{ \
+  node_y * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + node_x, \
+  node_y * image_width + std::min(image_width - 1, node_x + 1), \
+  std::min(node_y + 1, image_height - 1) * image_width + node_x, \
+  std::max(node_y - 1, 0) * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + std::min(image_width - 1, node_x + 1), \
+  std::min(node_y + 1, image_height - 1) * image_width + std::min(image_width - 1, node_x + 1), \
+  std::min(node_y + 1, image_height - 1) * image_width + std::max(0, node_x - 1) \
+}
+
+template <class CapType, class EdgePunishFun>
+class IGraph {
 #define ADD_ACTIVE_NODE(node) \
 { \
   if (!node->m_is_active) { \
@@ -43,110 +70,151 @@ class Graph {
   } \
   return_value; \
 })
-
  public:
   enum NodeState {
     SOURCE,
     SINK,
   };
-  Graph(int max_nodes_number, int max_edges_number);
-  void AddNode(int node_id, CapType source_capacity, CapType sink_capacity);
-  void AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity);
+  IGraph(int max_nodes_number, int image_width,
+         int image_height, EdgePunishFun epf);
+  void AddNode(int node_id, CapType source_capacity, CapType sink_capacity, int node_colour);
+  void AddActiveNodes(int node_x, int node_y);
   void MaxFlow();
   bool IsBelongToSource(int node_id);
 
  private:
-  class Node;
-  class Edge {
-   public:
-    Edge()
-      : m_dst_node(NULL)
-      , m_edge_capacity(0)
-      , m_rev_edge(NULL) {}
+  struct Node;
+  struct Edge {
     Node* m_dst_node;
     CapType m_edge_capacity;
     Edge* m_rev_edge;
   };
 
-  class Node {
-   public:
-    Node()
-      : m_residue_capacity(0)
-      , m_node_state(SINK)
-      , m_parent_edge(NULL)
-      , m_timestamp(0)
-      , m_terminal_dist(0)
-      , m_id(0)
-      , m_is_active(false)
-      , m_out_edges_num(0) {}
+  struct Node {
+    int m_node_idx;
+    int m_node_colour;
     CapType m_residue_capacity;
     NodeState m_node_state;
-    Edge* m_last_out_edge;
     Edge* m_parent_edge;
     // the timestamp of the latest dist calculating 
     int m_timestamp;
     int m_terminal_dist;
-    int m_id;
     bool m_is_active;
-    Edge* m_out_edges[8];
+    bool m_is_gotten_all_edges;
+    Edge m_out_edges[NEIGHBOUR];
     int m_out_edges_num;
   };
 
+  void CreateOutEdges(Node* cen_node);
+  Edge* GetEdge(Node* src_node, Node* dst_node);
+  Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor);
+
   std::vector<Node> m_nodes;
-  std::vector<Edge> m_edges;
-  std::queue<Node*> m_active_nodes;
-  // point to the last item used in m_edges
-  int m_last_edge_index;
   CapType m_flow;
+  std::queue<Node*> m_active_nodes;
+  int m_image_width;
+  int m_image_height;
+  EdgePunishFun m_epf;
 };
 
-template <class CapType>
-Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
-  : m_last_edge_index(0)
-  , m_flow(0) {
+template <class CapType, class EdgePunishFun>
+IGraph<CapType, EdgePunishFun>::IGraph(int max_nodes_number, int image_width, int image_height,
+                                       EdgePunishFun epf)
+  : m_flow(0)
+  , m_image_width(image_width)
+  , m_image_height(image_height)
+  , m_epf(epf) {
     m_nodes.reserve(max_nodes_number);
-    m_edges.reserve(max_edges_number);
   }
 
-template <class CapType>
-void Graph<CapType>::AddNode(int node_id, CapType source_capacity, CapType sink_capacity) {
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacity,
+                              CapType sink_capacity, int node_colour) {
   m_flow += source_capacity < sink_capacity ? source_capacity : sink_capacity;
   CapType node_capacity = source_capacity - sink_capacity;
   Node* node = &m_nodes[node_id];
+  node->m_node_idx = node_id;
+  node->m_node_colour = node_colour;
   node->m_residue_capacity = node_capacity;
-  node->m_node_state = node->m_residue_capacity < 0 ? SINK : SOURCE;
-  node->m_last_out_edge = NULL;
+  node->m_node_state = node_capacity > 0 ? SOURCE : SINK;
   node->m_parent_edge = TERMINAL;
   node->m_timestamp = 0;
   node->m_terminal_dist = 1;
-  node->m_id = node_id;
   node->m_is_active = false;
+  node->m_is_gotten_all_edges = false;
   node->m_out_edges_num = 0;
-  ADD_ACTIVE_NODE(node);
 }
 
-template <class CapType>
-void Graph<CapType>::AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity) {
-  Edge* edge = &m_edges[m_last_edge_index++];
-  Edge* rev_edge = &m_edges[m_last_edge_index++];
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
+  int index = node_y * m_image_width + node_x;
+  Node* cen_node = &m_nodes[index];
+  int arr_index[HALF_NEIGHBOUR] =
+    HALF_NEIGHBOUR_ARR_INDEX(node_x, node_y, m_image_width, m_image_height);
+  for (int i = 0; i < HALF_NEIGHBOUR; ++i) {
+    Node* arr_node = &m_nodes[arr_index[i]];
+    if (cen_node->m_node_state != arr_node->m_node_state) {
+      m_active_nodes.push(cen_node);
+      break;
+    }
+  }
+}
 
-  edge->m_dst_node = &m_nodes[dst_node_id];
-  edge->m_edge_capacity = edge_capacity;
+template <class CapType, class EdgePunishFun>
+typename IGraph<CapType, EdgePunishFun>::Edge* IGraph<CapType, EdgePunishFun>::GetEdge(
+  Node* src_node, Node* dst_node) {
+  for (int i = 0; i < src_node->m_out_edges_num; ++i) {
+    if (src_node->m_out_edges[i].m_dst_node == dst_node) {
+      return &src_node->m_out_edges[i];
+    }
+  }
+  return NULL;
+}
+
+template <class CapType, class EdgePunishFun>
+typename IGraph<CapType, EdgePunishFun>::Edge* IGraph<CapType, EdgePunishFun>::CreateEdge(
+  Node* src_node, Node* dst_node, double punish_factor) {
+  Edge* edge = &src_node->m_out_edges[src_node->m_out_edges_num++];
+  Edge* rev_edge = &dst_node->m_out_edges[dst_node->m_out_edges_num++];
+  CapType cap = punish_factor * m_epf(src_node->m_node_colour, dst_node->m_node_colour);
+  edge->m_edge_capacity = cap;
   edge->m_rev_edge = rev_edge;
-  rev_edge->m_dst_node = &m_nodes[src_node_id];
-  rev_edge->m_edge_capacity = edge_capacity;
+  edge->m_dst_node = dst_node;
+  rev_edge->m_edge_capacity = cap;
   rev_edge->m_rev_edge = edge;
-
-  Node* src_node = &m_nodes[src_node_id];
-  Node* dst_node = &m_nodes[dst_node_id];
-
-  assert(src_node != NULL && dst_node != NULL);
-  src_node->m_out_edges[src_node->m_out_edges_num++] = edge;
-  dst_node->m_out_edges[dst_node->m_out_edges_num++] = rev_edge;
+  rev_edge->m_dst_node = src_node;
+  return edge;
 }
 
-template <class CapType>
-void Graph<CapType>::MaxFlow() {
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
+  assert(cen_node != NULL);
+  if (cen_node->m_is_gotten_all_edges) {
+    return;
+  }
+  int coordinate = cen_node->m_node_idx;
+  int y_node = coordinate / m_image_width;
+  int x_node = coordinate - y_node * m_image_width;
+  int arr_nodes_idx[NEIGHBOUR] = 
+    NEIGHBOUR_ARR_INDEX(x_node, y_node, m_image_width, m_image_height);
+  double punish_factor = 1;
+  for (int i = 0; i < NEIGHBOUR; ++i) {
+    if (cen_node->m_node_idx == arr_nodes_idx[i]) {
+      continue;
+    }
+    Node* arr_node = &m_nodes[arr_nodes_idx[i]];
+    if (!GetEdge(cen_node, arr_node)) {
+      if (i > 3) {
+        punish_factor = igraph_div_sqrt2;
+      }
+      CreateEdge(cen_node, arr_node, punish_factor);
+    }
+  }
+  cen_node->m_is_gotten_all_edges = true;
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::MaxFlow() {
   std::queue<Node*> orphan_nodes;
 
   Node* at_node = NULL;
@@ -155,10 +223,10 @@ void Graph<CapType>::MaxFlow() {
   int path = 0;
   int tree_edges = 0;
   int broken_edges = 0;
-  bool enable = true;
   while(!m_active_nodes.empty()) {
     if (meet_edge == NULL || at_node->m_parent_edge == NULL) {
       at_node = GET_ACTIVE_NODE();
+      CreateOutEdges(at_node);
       if (at_node == NULL) {
         break;
       }
@@ -166,7 +234,7 @@ void Graph<CapType>::MaxFlow() {
     meet_edge = NULL;
     // grow source tree and sink tree
     for (int i = 0; i < at_node->m_out_edges_num; ++i) {
-      Edge* connected_edge = at_node->m_out_edges[i];
+      Edge* connected_edge = &at_node->m_out_edges[i];
       CapType capacity = at_node->m_node_state == SINK ?
                          connected_edge->m_rev_edge->m_edge_capacity :
                          connected_edge->m_edge_capacity;
@@ -204,12 +272,12 @@ void Graph<CapType>::MaxFlow() {
         Node* parent_node = first_edge[i]->m_dst_node;
         for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
              parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
-          path++;
           Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
           CapType cap = edge->m_edge_capacity;
           if (cap < min_capacity) {
             min_capacity = cap;
           }
+          path++;
         }
         CapType node_cap = parent_node->m_residue_capacity;
         CapType final_node_capacity = i == 0 ? node_cap : -node_cap; 
@@ -249,8 +317,9 @@ void Graph<CapType>::MaxFlow() {
         int dist_min = INIFINITE_DIST;
         Edge* connected_edge_min = NULL;
 
+        CreateOutEdges(orphan_node);
         for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
-          Edge* connected_edge = orphan_node->m_out_edges[i];
+          Edge* connected_edge = &orphan_node->m_out_edges[i];
           if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
             CapType capacity = orphan_node->m_node_state == SINK ?
                                connected_edge->m_edge_capacity :
@@ -303,7 +372,7 @@ void Graph<CapType>::MaxFlow() {
           tree_edges++;
         } else {
           for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
-            Edge* connected_edge = orphan_node->m_out_edges[i];
+            Edge* connected_edge = &orphan_node->m_out_edges[i];
             Node* dst_node = connected_edge->m_dst_node;
             Edge* parent_edge = dst_node->m_parent_edge;
             if (dst_node->m_node_state == orphan_node->m_node_state && parent_edge) {
@@ -329,13 +398,13 @@ void Graph<CapType>::MaxFlow() {
          path, tree_edges, broken_edges, m_flow);
 }
 
-template <class CapType>
-bool Graph<CapType>::IsBelongToSource(int node_id) {
+template <class CapType, class EdgePunishFun>
+bool IGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
   return m_nodes[node_id].m_node_state == SOURCE;
 }
 
-}  // namespace user 
-
 #undef TERMINAL
 #undef ORPHAN
-#endif  // INCLUDE_GRAPH_H_
+#undef ADD_ACTIVE_NODE
+#undef GET_ACTIVE_NODE
+#endif  // INCLUDE_IGRAPH_H_

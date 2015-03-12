@@ -339,7 +339,8 @@ private:
 	nodeptr				*orphan_first, *orphan_last;		// list of pointers to orphans
 	int					TIME;								// monotonically increasing global counter
   int path;
-  int orphan_path;
+  int tree_edges;
+  int broken_edges;
 
 	/////////////////////////////////////////////////////////////////////////
 
@@ -908,6 +909,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 		if (!a->sister->r_cap)
 		{
 			set_orphan_front(i); // add i to the beginning of the adoption list
+      broken_edges++;
 		}
 	}
 	i -> tr_cap -= bottleneck;
@@ -925,6 +927,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 		if (!a->r_cap)
 		{
 			set_orphan_front(i); // add i to the beginning of the adoption list
+      broken_edges++;
 		}
 	}
 	i -> tr_cap += bottleneck;
@@ -994,6 +997,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	{
 		i -> TS = TIME;
 		i -> DIST = d_min + 1;
+    tree_edges++;
 	}
 	else
 	{
@@ -1010,6 +1014,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 				if (a!=TERMINAL && a!=ORPHAN && a->head==i)
 				{
 					set_orphan_rear(j); // add j to the end of the adoption list
+          broken_edges++;
 				}
 			}
 		}
@@ -1071,6 +1076,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	{
 		i -> TS = TIME;
 		i -> DIST = d_min + 1;
+    tree_edges++;
 	}
 	else
 	{
@@ -1087,6 +1093,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 				if (a!=TERMINAL && a!=ORPHAN && a->head==i)
 				{
 					set_orphan_rear(j); // add j to the end of the adoption list
+          broken_edges++;
 				}
 			}
 		}
@@ -1099,7 +1106,8 @@ template <typename captype, typename tcaptype, typename flowtype>
 	flowtype Graph<captype,tcaptype,flowtype>::maxflow(bool reuse_trees, Block<node_id>* _changed_list)
 {
   path = 0;
-  orphan_path = 0;
+  tree_edges = 0;
+  broken_edges = 0;
 	node *i, *j, *current_node = NULL;
 	arc *a;
 	nodeptr *np, *np_next;
@@ -1147,6 +1155,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 					j -> DIST = i -> DIST + 1;
 					set_active(j);
 					add_to_changed_list(j);
+          tree_edges++;
 				}
 				else if (j->is_sink) break;
 				else if (j->TS <= i->TS &&
@@ -1174,6 +1183,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 					j -> DIST = i -> DIST + 1;
 					set_active(j);
 					add_to_changed_list(j);
+          tree_edges++;
 				}
 				else if (!j->is_sink) { a = a -> sister; break; }
 				else if (j->TS <= i->TS &&
@@ -1206,7 +1216,6 @@ template <typename captype, typename tcaptype, typename flowtype>
 
 				while ((np=orphan_first))
 				{
-          orphan_path++;
 					orphan_first = np -> next;
 					i = np -> ptr;
 					nodeptr_block -> Delete(np);
@@ -1230,7 +1239,8 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 
 	maxflow_iteration ++;
-  printf("path = %d, orphan_path = %d\n", path, orphan_path);
+  printf("path = %d, tree_edges = %d, broken_edges = %d, flow = %f\n",
+         path, tree_edges, broken_edges, flow);
 	return flow;
 }
 

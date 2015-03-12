@@ -76,7 +76,6 @@ class FGraph {
 
     // add --> |=
     // remove --> &= ~
-    #define ORPHAN 0x01
     #define ACTIVE 0x02
     int m_node_state;
 
@@ -119,6 +118,8 @@ class FGraph {
   int m_image_height;
   EdgePunishFun m_epf;
   int m_path;
+  int m_tree_edges;
+  int m_broken_edges;
   ImageData<int>* m_marked_image;
 };
 
@@ -132,6 +133,8 @@ FGraph<CapType, EdgePunishFun>::FGraph(int max_nodes_number, int image_width, in
   , m_image_height(image_height)
   , m_epf(epf)
   , m_path(0)
+  , m_tree_edges(0)
+  , m_broken_edges(0)
   , m_marked_image(marked_image) {
     // m_nodes.reserve(max_nodes_number);
   }
@@ -235,11 +238,13 @@ void FGraph<CapType, EdgePunishFun>::FindNewTrees(
   Node* leaf_node, Node** diff_trees_roots, int* diff_trees_roots_num) {
   Node* trace_node = leaf_node;
   for (; trace_node->m_parent_edge; trace_node = trace_node->m_parent_edge->m_dst_node) {
-    if (trace_node->m_root_node == m_curr_active_node && !m_curr_active_node->m_parent_edge) {
-      break;
+    if (trace_node->m_root_node == m_curr_active_node) {
+      if (leaf_node != m_curr_active_node) {
+        break;
+      }
     }
   }
-  if (trace_node->m_root_node != m_curr_active_node && !trace_node->m_node_state) {
+  if (trace_node->m_root_node != m_curr_active_node) {
     assert(!trace_node->m_parent_edge);
     bool is_find_new_tree = true;
     for (int i = 0; i < *diff_trees_roots_num; ++i) {
@@ -266,7 +271,6 @@ void FGraph<CapType, EdgePunishFun>::AddExploreNodes(Node* explore_node) {
     }
   }
   explore_node->m_root_node = m_curr_active_node;
-  explore_node->m_node_state &= ~ORPHAN;
   auto& explore_nodes = explore_node->m_node_property == SOURCE ?
     m_curr_active_node->m_s_explore_Nodes : m_curr_active_node->m_t_explore_Nodes;
   explore_nodes.push_back(explore_node);
@@ -301,10 +305,9 @@ void FGraph<CapType, EdgePunishFun>::FindNewExploreNodes(Node* center_node) {
           dst_node->m_parent_edge = out_edge->m_rev_edge;
           SET_PIXEL(m_marked_image, dst_node->m_node_idx,
                     dst_node->m_node_property == SOURCE ? RED : BLUE);
+          m_tree_edges++;
         } else {
-          if (!(dst_node->m_node_state & ORPHAN)) {
-            FindNewTrees(dst_node, diff_trees_roots, &diff_trees_roots_num);
-          }
+          FindNewTrees(dst_node, diff_trees_roots, &diff_trees_roots_num);
         }
       }
     }
@@ -325,7 +328,6 @@ void FGraph<CapType, EdgePunishFun>::AddOrphanNode(
   Node* orphan_node, bool is_add_queue) {
   orphan_node->m_parent_edge = NULL;
   orphan_node->m_root_node = m_curr_active_node;
-  orphan_node->m_node_state |= ORPHAN;
   if (is_add_queue) {
     m_orphan_nodes.push(orphan_node);
   }
@@ -430,6 +432,7 @@ bool FGraph<CapType, EdgePunishFun>::Augment() {
       if (!edge->m_edge_capacity) {
         AddOrphanNode(parent_node);
         is_path_exist = false;
+        m_broken_edges++;
       }
     }
     int factor = first_node[i]->m_node_property == SOURCE ? -1 : 1;
@@ -475,38 +478,28 @@ void FGraph<CapType, EdgePunishFun>::MoveExploreNodes(Node* old_root_node) {
 
 template <class CapType, class EdgePunishFun>
 void FGraph<CapType, EdgePunishFun>::GrowOrphanTree(Node* first_node) {
-  assert(!(first_node->m_node_state & ORPHAN));
   std::queue<Node*> ex_orphans;
   ex_orphans.push(first_node);
   while (!ex_orphans.empty()) {
     Node* ex_orphan_node = ex_orphans.front();
     ex_orphans.pop();
-    if (ex_orphan_node->m_residue_capacity) {
-      AddExploreNodes(ex_orphan_node);
-      if (ex_orphan_node != first_node) {
-        continue;
-      }
-    }
     bool find_next = false;
     for (int i = 0; i < ex_orphan_node->m_out_edges_num; ++i) {
       Edge* out_edge = &ex_orphan_node->m_out_edges[i];
       Node* dst_node = out_edge->m_dst_node;
-      if (((dst_node->m_node_state & ORPHAN && !dst_node->m_parent_edge &&
-            dst_node->m_root_node == m_curr_active_node) ||
-           (dst_node->m_residue_capacity && !dst_node->m_parent_edge &&
-            dst_node != m_curr_active_node)) &&
+      if (dst_node != m_curr_active_node && !dst_node->m_parent_edge &&
+          dst_node->m_root_node == m_curr_active_node &&
           (dst_node->m_node_property == ex_orphan_node->m_node_property ||
            ex_orphan_node == m_curr_active_node)) {
-        assert(!dst_node->m_parent_edge);
         CapType cap = dst_node->m_node_property == SOURCE ?
           out_edge->m_rev_edge->m_edge_capacity : out_edge->m_edge_capacity;
         if (cap) {
-          dst_node->m_node_state &= ~ORPHAN;
           dst_node->m_parent_edge = out_edge->m_rev_edge;
           SET_PIXEL(m_marked_image, dst_node->m_node_idx,
                     dst_node->m_node_property == SOURCE ? RED : BLUE);
           ex_orphans.push(dst_node);
           find_next = true;
+          m_tree_edges++;
         }
       }
     }
@@ -532,7 +525,7 @@ bool FGraph<CapType, EdgePunishFun>::FindOtherPath() {
   while (!m_orphan_nodes.empty()) {
     Node* orphan_node = m_orphan_nodes.front();
     m_orphan_nodes.pop();
-    if (!(orphan_node->m_node_state & ORPHAN)) {
+    if (orphan_node->m_parent_edge) {
       continue;
     }
     SET_PIXEL(m_marked_image, orphan_node->m_node_idx, YELLOW);
@@ -558,7 +551,7 @@ bool FGraph<CapType, EdgePunishFun>::FindOtherPath() {
           new_parent_edge = out_edge; 
         }
       }
-      if (dst_node->m_node_state & ORPHAN) {
+      if (!dst_node->m_parent_edge && dst_node->m_root_node == m_curr_active_node) {
         find_arr_orphan = true;
       }
     }
@@ -569,6 +562,7 @@ bool FGraph<CapType, EdgePunishFun>::FindOtherPath() {
         if (dst_node->m_parent_edge != NULL &&
             dst_node->m_parent_edge->m_dst_node == orphan_node) {
           AddOrphanNode(dst_node);
+          m_broken_edges++;
         }
       }
       // node is orphan and unsaturation
@@ -578,10 +572,10 @@ bool FGraph<CapType, EdgePunishFun>::FindOtherPath() {
     } else {
       if (find_arr_orphan) {
         GrowOrphanTree(new_parent_edge->m_dst_node);
-        assert(orphan_node->m_parent_edge && !(orphan_node->m_node_state & ORPHAN));
+        assert(orphan_node->m_parent_edge);
       } else {
-        orphan_node->m_node_state &= ~ORPHAN;
         orphan_node->m_parent_edge = new_parent_edge;
+        m_tree_edges++;
       }
       find_path = false;
     }
@@ -606,6 +600,7 @@ void FGraph<CapType, EdgePunishFun>::ExpandStateArea() {
     expand_node->m_node_property = change_prty;
     if (expand_node != m_curr_active_node) {
       AddOrphanNode(expand_node, false);
+      m_broken_edges++;
     } else {
       // AddExploreNodes(expand_node);
     }
@@ -682,7 +677,8 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
       }
     }
   }
-  printf("path = %d, m_flow = %f\n", m_path, m_flow);
+  printf("path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
+          m_path, m_tree_edges, m_broken_edges, m_flow);
 }
 
 template <class CapType, class EdgePunishFun>
@@ -693,5 +689,4 @@ bool FGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
 #undef SOURCE 
 #undef SINK 
 #undef ACTIVE
-#undef ORPHAN
 #endif  // INCLUDE_FGRAPH_H_

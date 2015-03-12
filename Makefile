@@ -22,6 +22,7 @@ lazysnapping : \
   include/GrabCut.h \
   include/Gmm.h \
 	include/Graph.h \
+	include/IGraph.h \
 	include/FGraph.h \
   src/utils.cpp \
   src/main.cpp \

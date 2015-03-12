@@ -19,6 +19,7 @@
 #include "include/Segmentation.h"
 #include "include/SegmentationData.h"
 #include "include/UserInput.h"
+#include "include/IGraph.h"
 #include "include/FGraph.h"
 #include "include/Graph.h"
 #include "include/gcgraph.hpp"
@@ -141,6 +142,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define MY_MAXFLOW 0
 #define B_MAXFLOW 0
 #define OPENCV_MAXFLOW 0
+#define IGRAPH 1
+#define FGRAPH 1
 
   // FGraph<double> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #if MY_MAXFLOW
@@ -150,7 +153,13 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #elif OPENCV_MAXFLOW
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
-#else
+#endif
+
+#if IGRAPH
+  IGraph<double, EPF> igraph(vtx_count, width, height, EdgePunishItem);
+#endif
+
+#if FGRAPH
   FGraph<double, EPF> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #endif
 
@@ -194,7 +203,13 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #elif OPENCV_MAXFLOW
       graph.addVtx();
       graph.addTermWeights(index, e1[0], e1[1]);
-#else
+#endif
+
+#if IGRAPH
+      igraph.AddNode(vtx0, e1[0], e1[1], colour);
+      igraph.AddActiveNodes(x, y);
+#endif
+#if FGRAPH
       fgraph.AddNode(vtx0, e1[0], e1[1], colour);
       fgraph.AddActiveNodes(x, y);
 #endif
@@ -254,29 +269,43 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   }
 
 #if 1
+CountTime ct;
 #if MY_MAXFLOW
+ct.ContBegin();
   graph.MaxFlow();
+ct.ContEnd();
+ct.PrintTime();
 #elif B_MAXFLOW
+ct.ContBegin();
   graph.maxflow();
+ct.ContEnd();
+ct.PrintTime();
 #elif OPENCV_MAXFLOW
   graph.maxFlow();
-#else
+#endif
+
+#if IGRAPH
+ct.ContBegin();
+  igraph.MaxFlow();
+ct.ContEnd();
+ct.PrintTime();
+#endif
+
+#if FGRAPH
+ct.ContBegin();
   fgraph.MaxFlow();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 #endif
 
-#if 1
+#if 0
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int marked_colour = GET_PIXEL(marked_image, index);
       if (marked_colour != IGNORED) {
         int vtx0 = BUILD_VTX(index);
-        // if (fgraph.IsBelongToSource(vtx0)) {
-        //   SET_PIXEL(marked_image, index, SUBJECT);
-        // } else {
-        //   SET_PIXEL(marked_image, index, BACKGROUND);
-        // }
 #if MY_MAXFLOW
         if (graph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
@@ -295,8 +324,16 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
         }
-#else
+#endif
+#if FGRAPH
         if (fgraph.IsBelongToSource(vtx0)) {
+          SET_PIXEL(marked_image, index, SUBJECT);
+        } else {
+          SET_PIXEL(marked_image, index, BACKGROUND);
+        }
+#endif
+#if IGRAPH
+        if (igraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
@@ -543,14 +580,14 @@ void LazySnapping::UpdateSceneVector(SegmentationData* sd, UserInput* uip) {
 }
 
 void LazySnapping::DoPartition() {
-  CountTime ct;
-  ct.ContBegin();
+  // CountTime ct;
+  // ct.ContBegin();
 
   SegmentationWithoutCoarsen();
   // SegmentationWithCoarsen();
 
-  ct.ContEnd();
-  ct.PrintTime();
+  // ct.ContEnd();
+  // ct.PrintTime();
 }
 
 void* fun(void* arg) {
