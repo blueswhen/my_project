@@ -223,6 +223,9 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
   int path = 0;
   int tree_edges = 0;
   int broken_edges = 0;
+  int augment_num = 0;
+  double time = 0;
+  CountTime ct;
   while(!m_active_nodes.empty()) {
     if (meet_edge == NULL || at_node->m_parent_edge == NULL) {
       at_node = GET_ACTIVE_NODE();
@@ -263,6 +266,8 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
     global_timestamp++;
 
     if (meet_edge) {
+      augment_num++;
+      ct.ContBegin();
       // augment path
       Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
 	    CapType min_capacity = meet_edge -> m_edge_capacity;
@@ -309,6 +314,8 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
         }
       }
       m_flow += min_capacity;
+      ct.ContEnd();
+      time += ct.ContResult();
 
       // adopt orphan nodes
       while (!orphan_nodes.empty()) {
@@ -394,8 +401,8 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       }
     }
   }
-  printf("augment path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
-         path, tree_edges, broken_edges, m_flow);
+  printf("augment path = %d, tree_edges = %d, broken_edges = %d, augment_num = %d, avg_time = %f, m_flow = %f\n",
+         path, tree_edges, broken_edges, augment_num, (time * 1000) / augment_num, m_flow);
 }
 
 template <class CapType, class EdgePunishFun>
