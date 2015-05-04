@@ -156,7 +156,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if IGRAPH
-  IGraph<double, EPF> igraph(vtx_count, width, height, EdgePunishItem);
+  IGraph<double, EPF> igraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #endif
 
 #if FGRAPH
@@ -331,8 +331,7 @@ ct.PrintTime();
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
         }
-#endif
-#if IGRAPH
+#elif IGRAPH
         if (igraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
@@ -599,9 +598,12 @@ void LazySnapping::DoLeftButtonDown(int x, int y) {
   InitMarkedImage();
   // m_usr_input->DrawFirstPointForSub(x, y);
   UpdateSceneVector(m_sd, m_usr_input);
-  // DoPartition();
+#if 0
+  DoPartition();
+#else
   pthread_t id;
   pthread_create(&id, NULL, fun, this);
+#endif
 }
 
 void LazySnapping::DoRightButtonDown(int x, int y) {
