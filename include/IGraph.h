@@ -25,6 +25,8 @@
 #define HALF_NEIGHBOUR_ARR_INDEX FOUR_ARR_INDEX
 #define NEIGHBOUR_ARR_INDEX EIGHT_ARR_INDEX
 
+// #define ENABLE_BFS
+
 const double igraph_div_sqrt2 = 1 / sqrt(2.0f);
 
 #define FOUR_ARR_INDEX(node_x, node_y, image_width, image_height) \
@@ -67,7 +69,9 @@ class IGraph {
     CapType m_residue_capacity;
     NodeState m_node_state;
     Edge* m_parent_edge;
+#ifdef ENABLE_BFS
     Edge* m_child_edge;
+#endif
     // the timestamp of the latest dist calculating 
     int m_timestamp;
     int m_terminal_dist;
@@ -97,6 +101,7 @@ class IGraph {
       if (active_node->m_parent_edge) {
         break;
       }
+      active_node = NULL;
     }
     return active_node;
   }
@@ -148,13 +153,15 @@ void IGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacit
   node->m_residue_capacity = node_capacity;
   node->m_node_state = node_capacity > 0 ? SOURCE : SINK;
   node->m_parent_edge = TERMINAL;
+#ifdef ENABLE_BFS
   node->m_child_edge = NULL;
+#endif
   node->m_timestamp = 0;
   node->m_terminal_dist = 1;
   node->m_is_active = false;
   node->m_is_gotten_all_edges = false;
   node->m_out_edges_num = 0;
-  SET_PIXEL(m_marked_image, node_id, node_capacity > 0 ? WHITE : BLACK);
+  // SET_PIXEL(m_marked_image, node_id, node_capacity > 0 ? WHITE : BLACK);
 }
 
 template <class CapType, class EdgePunishFun>
@@ -166,9 +173,6 @@ void IGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
   for (int i = 0; i < HALF_NEIGHBOUR; ++i) {
     Node* arr_node = &m_nodes[arr_index[i]];
     if (cen_node->m_node_state != arr_node->m_node_state) {
-      // if (cen_node->m_node_idx != 412464 && cen_node->m_node_idx != 412463) {
-      //   continue;
-      // }
       m_active_nodes.push(cen_node);
       break;
     }
@@ -298,16 +302,13 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
   int path = 0;
   int tree_edges = 0;
   int broken_edges = 0;
-  int augment_num = 0;
-  double time = 0;
-  CountTime ct;
-  while(!m_active_nodes.empty()) {
+  while (true) {
     if (meet_edge == NULL || at_node->m_parent_edge == NULL) {
       at_node = GetActiveNode();
-      CreateOutEdges(at_node);
       if (at_node == NULL) {
         break;
       }
+      CreateOutEdges(at_node);
     }
     meet_edge = NULL;
     // grow source tree and sink tree
@@ -325,8 +326,8 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
           dst_node->m_node_state = at_node->m_node_state;
           AddActiveNode(dst_node);
-          // SET_PIXEL(m_marked_image, dst_node->m_node_idx, dst_node->m_node_state == SOURCE ? RED : BLUE);
           tree_edges++;
+          // SET_PIXEL(m_marked_image, dst_node->m_node_idx, dst_node->m_node_state == SOURCE ? COLOUR_DARK_RED : GRAY);
         } else if (dst_node->m_node_state != at_node->m_node_state) {
           meet_edge = at_node->m_node_state == SINK ?
                       connected_edge->m_rev_edge : connected_edge;
@@ -343,8 +344,6 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
     m_global_timestamp++;
 
     if (meet_edge) {
-      augment_num++;
-      ct.ContBegin();
       // augment path
       Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
 	    CapType min_capacity = meet_edge -> m_edge_capacity;
@@ -352,10 +351,15 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       // find min capacity from path
       for (int i = 0; i < 2; ++i) {
         Node* parent_node = first_edge[i]->m_dst_node;
+#ifdef ENABLE_BFS
         parent_node->m_child_edge = NULL;
+#endif
         for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
              parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
+          assert(parent_edge);
+#ifdef ENABLE_BFS
           parent_edge->m_dst_node->m_child_edge = parent_edge->m_rev_edge;
+#endif
           Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
           CapType cap = edge->m_edge_capacity;
           if (cap < min_capacity) {
@@ -391,8 +395,6 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
         }
       }
       m_flow += min_capacity;
-      ct.ContEnd();
-      time += ct.ContResult();
 
       // adopt orphan nodes
       while (!m_orphan_nodes.empty()) {
@@ -402,14 +404,17 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
         FindNewPath(orphan_node);
 
         if (orphan_node->m_parent_edge) {
+          // SET_PIXEL(m_marked_image, orphan_node->m_node_idx, orphan_node->m_node_state == SOURCE ? RED : BLUE);
           tree_edges++;
+#ifdef ENABLE_BFS
           if (orphan_node->m_child_edge) {
             Node* child_node = orphan_node->m_child_edge->m_dst_node;
             if (child_node->m_parent_edge == orphan_node->m_child_edge->m_rev_edge &&
-                child_node->m_terminal_dist < orphan_node->m_terminal_dist + 1) {
+                child_node->m_terminal_dist <= orphan_node->m_terminal_dist) {
               AddOrphanNode(child_node);
             }
           }
+#endif
         } else {
           // for (int i = orphan_node->m_out_edges_num - 1; i >= 0; --i) {
           for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
@@ -434,8 +439,8 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       }
     }
   }
-  printf("augment path = %d, tree_edges = %d, broken_edges = %d, augment_num = %d, avg_time = %f, m_flow = %f\n",
-         path, tree_edges, broken_edges, augment_num, (time * 1000) / augment_num, m_flow);
+  printf("augment path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
+         path, tree_edges, broken_edges, m_flow);
 }
 
 template <class CapType, class EdgePunishFun>
