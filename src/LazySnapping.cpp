@@ -281,7 +281,10 @@ ct.ContBegin();
 ct.ContEnd();
 ct.PrintTime();
 #elif OPENCV_MAXFLOW
+ct.ContBegin();
   graph.maxFlow();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 
 #if IGRAPH
@@ -299,7 +302,7 @@ ct.PrintTime();
 #endif
 #endif
 
-#if 0
+#if 1
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
