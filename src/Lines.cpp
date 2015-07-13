@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <assert.h>
+#include <stdio.h>
 
 #include "include/ImageData.h"
 #include "include/SegmentationData.h"
@@ -132,9 +133,20 @@ void Lines::DrawSubjectFinish(int x, int y) {
   assert(m_sd != NULL);
   ImageData<int>* image = m_sd->GetSourceImageBck();
   m_sub_mark_value.clear();
+  int width = image->GetWidth();
+  int height = image->GetHeight();
+  FILE* file;
+  file = fopen("line_points.txt", "w");
+  assert(file);
   for (int i = 0; i < m_sub_mark_index.size(); ++i) {
     m_sub_mark_value.push_back(GET_PIXEL(image, m_sub_mark_index[i]));
+    int xy[2] = GET_XY(m_sub_mark_index[i], width);
+    double x_v = static_cast<double>(xy[0]) / width;
+    double y_v = static_cast<double>(xy[1]) / height;
+    fprintf(file, "%f\n", x_v);
+    fprintf(file, "%f\n", y_v);
   }
+  fclose(file);
 
   DRAW_SCENE_FINISH_FOR_HALF_LINES(m_sub_mark_index, m_sub_mark_value);
 }

@@ -328,6 +328,7 @@ private:
 										// (or exit(1) is called if it's NULL)
 
 	flowtype			flow;		// total flow
+  int m_edges_num;
 
 	// reusing trees & list of changed pixels
 	int					maxflow_iteration; // counter
@@ -436,6 +437,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	a_rev -> head = i;
 	a -> r_cap = cap;
 	a_rev -> r_cap = rev_cap;
+  m_edges_num += 2;
 }
 
 template <typename captype, typename tcaptype, typename flowtype> 
@@ -541,6 +543,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 
 	maxflow_iteration = 0;
 	flow = 0;
+  m_edges_num = 0;
 }
 
 template <typename captype, typename tcaptype, typename flowtype> 
@@ -1239,8 +1242,9 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 
 	maxflow_iteration ++;
-  printf("path = %d, tree_edges = %d, broken_edges = %d, flow = %f\n",
-         path, tree_edges, broken_edges, flow);
+  printf("path = %d, tree_edges = %d, broken_edges = %d, m_edges_num = %d, flow = %f\n",
+         path, tree_edges, broken_edges, m_edges_num, flow);
+  // printf("Boykov m_edges_num = %d\n", m_edges_num);
 	return flow;
 }
 

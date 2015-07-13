@@ -22,15 +22,17 @@
 #include "include/IGraph.h"
 #include "include/FGraph.h"
 #include "include/Graph.h"
+#include "include/PRGraph.h"
 #include "include/gcgraph.hpp"
 #include "include/maxflow-v3.03/graph.h"
+#include "include/ibfs/ibfs.h"
 
 #define START_GRADIENT 10
 // START_MARK_NUM must be positive number
 #define START_MARK_NUM 100
 #define K_NUM 60
 #define ITER 10
-#define LAMDA 60
+#define LAMDA 50
 
 typedef Graph<double, double, double> GraphType;
 typedef double (*EPF)(int src_node_colour, int dst_node_colour);
@@ -137,15 +139,17 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
     marked_image->CreateEmptyImage(width, height);
   }
   int vtx_count = width * height;
-  int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
+  int edge_count = 4 * vtx_count - 3 * (width + height) + 2;
 
+#define ADD_EDGE 1
 #define MY_MAXFLOW 0
 #define B_MAXFLOW 0
+#define IB_MAXFLOW 0
+#define PR_MAXFLOW 1
 #define OPENCV_MAXFLOW 0
-#define IGRAPH 1
-#define FGRAPH 1
+#define IGRAPH 0
+#define FGRAPH 0
 
-  // FGraph<double> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #if MY_MAXFLOW
   user::Graph<double> graph(vtx_count, edge_count);
 #elif B_MAXFLOW
@@ -153,6 +157,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #elif OPENCV_MAXFLOW
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
+#elif IB_MAXFLOW
+  IBFSGraph graph;
+  graph.initSize(vtx_count, edge_count);
+#elif PR_MAXFLOW
+  PRGraph<double> graph(vtx_count, edge_count);
 #endif
 
 #if IGRAPH
@@ -193,8 +202,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         e1[1] = DBL_MAX;
       }
       int vtx0 = BUILD_VTX(index);
-      // fgraph.AddNode(vtx0, e1[0], e1[1], colour);
-      // fgraph.AddActiveNodes(x, y);
 #if MY_MAXFLOW
       graph.AddNode(vtx0, e1[0], e1[1]);
 #elif B_MAXFLOW
@@ -203,6 +210,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #elif OPENCV_MAXFLOW
       graph.addVtx();
       graph.addTermWeights(index, e1[0], e1[1]);
+#elif IB_MAXFLOW
+      graph.addNode(vtx0, e1[0], e1[1]);
+#elif PR_MAXFLOW
+      graph.AddNode(vtx0, e1[0], e1[1]);
 #endif
 
 #if IGRAPH
@@ -214,7 +225,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       fgraph.AddActiveNodes(x, y);
 #endif
 
-#if 1
+#if ADD_EDGE
       // 8 neighbours
       if ((graph_vtx_map == NULL && x > 0) || IS_BUILD_EDGE(index - 1)) {
         int vtx1 = BUILD_VTX(index - 1);
@@ -226,6 +237,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
+#elif IB_MAXFLOW
+        graph.addEdge(vtx0, vtx1, e2, e2);
+#elif PR_MAXFLOW
+        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
       if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
@@ -238,6 +253,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
+#elif IB_MAXFLOW
+        graph.addEdge(vtx0, vtx1, e2, e2);
+#elif PR_MAXFLOW
+        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
       if ((graph_vtx_map == NULL && y > 0) || IS_BUILD_EDGE(index - width)) {
@@ -250,6 +269,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
+#elif IB_MAXFLOW
+        graph.addEdge(vtx0, vtx1, e2, e2);
+#elif PR_MAXFLOW
+        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
       if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
@@ -262,6 +285,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
+#elif IB_MAXFLOW
+        graph.addEdge(vtx0, vtx1, e2, e2);
+#elif PR_MAXFLOW
+        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
 #endif
@@ -276,29 +303,40 @@ ct.ContBegin();
 ct.ContEnd();
 ct.PrintTime();
 #elif B_MAXFLOW
-ct.ContBegin();
+// ct.ContBegin();
   graph.maxflow();
-ct.ContEnd();
-ct.PrintTime();
+// ct.ContEnd();
+// ct.PrintTime();
 #elif OPENCV_MAXFLOW
 ct.ContBegin();
   graph.maxFlow();
 ct.ContEnd();
 ct.PrintTime();
+#elif IB_MAXFLOW
+ct.ContBegin();
+  graph.initGraph();
+  graph.computeMaxFlow();
+ct.ContEnd();
+ct.PrintTime();
+#elif PR_MAXFLOW
+ct.ContBegin();
+  graph.MaxFlow();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 
 #if IGRAPH
-ct.ContBegin();
+// ct.ContBegin();
   igraph.MaxFlow();
-ct.ContEnd();
-ct.PrintTime();
+// ct.ContEnd();
+// ct.PrintTime();
 #endif
 
 #if FGRAPH
-ct.ContBegin();
+// ct.ContBegin();
   fgraph.MaxFlow();
-ct.ContEnd();
-ct.PrintTime();
+// ct.ContEnd();
+// ct.PrintTime();
 #endif
 #endif
 
@@ -323,6 +361,18 @@ ct.PrintTime();
         }
 #elif OPENCV_MAXFLOW
         if (graph.inSourceSegment(vtx0)) {
+          SET_PIXEL(marked_image, index, SUBJECT);
+        } else {
+          SET_PIXEL(marked_image, index, BACKGROUND);
+        }
+#elif IB_MAXFLOW 
+        if (graph.isNodeOnSrcSide(vtx0)) {
+          SET_PIXEL(marked_image, index, SUBJECT);
+        } else {
+          SET_PIXEL(marked_image, index, BACKGROUND);
+        }
+#elif PR_MAXFLOW 
+        if (graph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
@@ -597,13 +647,18 @@ void* fun(void* arg) {
   ls->DoPartition();
 }
 
+// #define DRAW_LINE_TEST
+
 void LazySnapping::DoLeftButtonDown(int x, int y) {
   InitMarkedImage();
-  // m_usr_input->DrawFirstPointForSub(x, y);
+#ifdef DRAW_LINE_TEST 
+  m_usr_input->DrawFirstPointForSub(x, y);
+#endif
   UpdateSceneVector(m_sd, m_usr_input);
-#if 0
+#ifndef DRAW_LINE_TEST
   DoPartition();
-#else
+#endif
+#if 0
   pthread_t id;
   pthread_create(&id, NULL, fun, this);
 #endif
@@ -622,8 +677,10 @@ void LazySnapping::DoRightMouseMove(int x, int y) {
 }
 
 void LazySnapping::DoLeftButtonUp(int x, int y) {
-  // m_usr_input->DrawSubjectFinish(x, y);
-  // DoPartition();
+#ifdef DRAW_LINE_TEST 
+  m_usr_input->DrawSubjectFinish(x, y);
+  DoPartition();
+#endif
 }
 
 void LazySnapping::DoRightButtonUp(int x, int y) {

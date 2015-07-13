@@ -19,6 +19,7 @@
 #include "include/SegmentationData.h"
 #include "include/Lines.h"
 #include "include/Square.h"
+#include "include/Data.h"
 #include "include/GrabCut.h"
 
 #define SUB_COL GREEN
@@ -27,6 +28,8 @@
 #define IMAGE_OUT_NAME_2 "result2.bmp"
 #define IMAGE_OUT_NAME_3 "result3.bmp"
 
+// #define NO_UI
+
 int main(int argc, char** argv) {
   if (argc == 1) {
     printf("error: need a image\n");
@@ -34,13 +37,16 @@ int main(int argc, char** argv) {
   }
   ImageData<int> src;
   utils::ReadImage(argv[1], &src);
-  ImageData<int> src2;
   ImageData<int> src_bk;
+#ifndef NO_UI
   if (argc == 3) {
     utils::ReadImage(argv[2], &src_bk);
   } else {
     src_bk = src;
   }
+#else
+  src_bk = src;
+#endif
   ImageData<int> scale_50_src;
   ImageData<int> scale_25_src;
 
@@ -49,11 +55,24 @@ int main(int argc, char** argv) {
   ImageData<int> scale_50_src_bk(scale_50_src);
   ImageData<int> scale_25_src_bk(scale_25_src);
 
-  cv::namedWindow(ui::WIN_NAME, cv::WINDOW_AUTOSIZE);
-
   SegmentationData scale_25_sd(&scale_25_src, &scale_25_src_bk, SUB_COL, BCK_COL, NULL);
   SegmentationData scale_50_sd(&scale_50_src, &scale_50_src_bk, SUB_COL, BCK_COL, &scale_25_sd);
   SegmentationData sd(&src, &src_bk, SUB_COL, BCK_COL, &scale_50_sd);
+
+#ifdef NO_UI
+  if (argc == 3) {
+    FILE* file = NULL;
+    file = fopen(argv[2], "r");
+    assert(file);
+    Data da(file, src);
+    LazySnapping ls(&sd, &da);
+    ls.DoPartition();
+    // GrabCut gc(&sd, &da);
+    // gc.DoPartition();
+    utils::SaveImage(IMAGE_OUT_NAME, src);
+    return 0;
+  }
+#endif
 
   Lines ln_25;
   Lines ln_50(&ln_25);
@@ -62,6 +81,8 @@ int main(int argc, char** argv) {
   Square sr;
   LazySnapping ls(&sd, &ln);
   GrabCut gc(&sd, &ln);
+
+  cv::namedWindow(ui::WIN_NAME, cv::WINDOW_AUTOSIZE);
 
   ui::Transpoter tp;
   tp.seg = &ls;
@@ -114,8 +135,8 @@ int main(int argc, char** argv) {
 
 exit_main:
     cv::destroyWindow(ui::WIN_NAME);
-    // utils::SaveImage(IMAGE_OUT_NAME, src);
-    utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
+    utils::SaveImage(IMAGE_OUT_NAME, src);
+    // utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_2, *scale_50_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_3, *scale_25_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME, scale_25_src);

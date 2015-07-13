@@ -16,8 +16,9 @@
 #include "include/WatershedRegion.h"
 #include "include/ui.h"
 #include "include/Gmm.h"
+#include "include/IGraph.h"
 #include "include/FGraph.h"
-#include "include/Graph.h"
+// #include "include/Graph.h"
 #include "include/maxflow-v3.03/block.h"
 #include "include/maxflow-v3.03/graph.h"
 #include "include/Segmentation.h"
@@ -29,7 +30,7 @@ typedef Graph<double, double, double> GraphType;
 #define ITER 10
 
 // grab cut
-#define ITER_COUNT 5
+#define ITER_COUNT 1
 
 using namespace cv;
 
@@ -178,10 +179,23 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   int height = image.GetHeight();
   int vtx_count = width * height;
   int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
-  user::Graph<double> graph(vtx_count, edge_count);
-  // user::Graph<double> graph(vtx_count, edge_count);
-  // EdgePunishItem epi(gamma, beta);
-  // FGraph<double, EdgePunishItem> fgraph(vtx_count, edge_count, width, height, epi);
+
+#define B_MAXFLOW 0
+#define IGRAPH 1
+#define FGRAPH 0
+
+#if B_MAXFLOW
+  GraphType graph(vtx_count, edge_count);
+#endif
+
+  EdgePunishItem epi(gamma, beta);
+#if IGRAPH
+  IGraph<double, EdgePunishItem> igraph(vtx_count, width, height, epi, marked_image);
+#endif
+
+#if FGRAPH
+  FGraph<double, EdgePunishItem> fgraph(vtx_count, width, height, epi, marked_image);
+#endif
 
   const double gammaDivSqrt2 = gamma / std::sqrt(2.0f);
   for(int y = 0; y < height; ++y) {
@@ -207,57 +221,91 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
         e1[1] = 0;
       }
       int vtx0 = BUILD_VTX(index);
-      graph.AddNode(vtx0, e1[0], e1[1]);
-      // fgraph.AddNode(vtx0, e1[0], e1[1], colour);
-      // fgraph.AddActiveNodes(x, y);
+#if B_MAXFLOW
+      graph.add_node();
+      graph.add_tweights(vtx0, e1[0], e1[1]);
+#endif
+#if IGRAPH
+      igraph.AddNode(vtx0, e1[0], e1[1], colour);
+      igraph.AddActiveNodes(x, y);
+#endif
+#if FGRAPH
+      fgraph.AddNode(vtx0, e1[0], e1[1], colour);
+      fgraph.AddActiveNodes(x, y);
+#endif
 
-#if 1
+#if B_MAXFLOW
       // 8 neighbours
       if ((graph_vtx_map == NULL && x > 0) || IS_BUILD_EDGE(index - 1)) {
         int colour_arr = GET_PIXEL(&image, y * width + x - 1);
         double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
         int vtx1 = BUILD_VTX(index - 1);
-        graph.AddEdge(vtx0, vtx1, e2);
+        graph.add_edge(vtx0, vtx1, e2, e2);
       }
       if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
         int colour_arr = GET_PIXEL(&image, (y - 1) * width + x - 1);
         double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
         int vtx1 = BUILD_VTX(index -width - 1);
-        graph.AddEdge(vtx0, vtx1, e2);
+        graph.add_edge(vtx0, vtx1, e2, e2);
       }
       if ((graph_vtx_map == NULL && y > 0) || IS_BUILD_EDGE(index - width)) {
         int colour_arr = GET_PIXEL(&image, (y - 1) * width + x);
         double e2 = gamma * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
         int vtx1 = BUILD_VTX(index - width);
-        graph.AddEdge(vtx0, vtx1, e2);
+        graph.add_edge(vtx0, vtx1, e2, e2);
       }
       if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
         int colour_arr = GET_PIXEL(&image, (y - 1) * width + x + 1);
         double e2 = gammaDivSqrt2 * exp(-beta * COLOUR_DIST_SQUARE(colour, colour_arr));
         int vtx1 = BUILD_VTX(index - width + 1);
-        graph.AddEdge(vtx0, vtx1, e2);
+        graph.add_edge(vtx0, vtx1, e2, e2);
       }
 #endif
     }
   }
 
-  graph.MaxFlow();
-  // fgraph.MaxFlow();
+#if B_MAXFLOW
+  graph.maxflow();
+#endif
+#if IGRAPH
+  igraph.MaxFlow();
+#endif
+#if FGRAPH
+  fgraph.MaxFlow();
+#endif
 
+#if 1
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int marked_colour = GET_PIXEL(marked_image, index);
       if (marked_colour == PR_SUB || marked_colour == PR_BCK) {
         int vtx0 = BUILD_VTX(index);
-        if (graph.IsBelongToSource(vtx0)) {
+#if B_MAXFLOW
+        if (graph.what_segment(vtx0) == GraphType::SOURCE) {
+          SET_PIXEL(marked_image, index, SUBJECT);
+        } else {
+          SET_PIXEL(marked_image, index, BACKGROUND);
+        }
+#endif
+#if IGRAPH 
+        if (igraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, PR_SUB);
         } else {
           SET_PIXEL(marked_image, index, PR_BCK);
         }
+#endif
+#if FGRAPH 
+        if (fgraph.IsBelongToSource(vtx0)) {
+          SET_PIXEL(marked_image, index, PR_SUB);
+        } else {
+          SET_PIXEL(marked_image, index, PR_BCK);
+        }
+#endif
       }
     }
   }
+#endif
 }
 
 void CreateFinalMarkedImage(ImageData<int>* marked_image) {

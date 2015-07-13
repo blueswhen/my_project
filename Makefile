@@ -19,11 +19,15 @@ lazysnapping : \
   include/Lines.h \
   include/Square.h \
   include/Lasso.h \
+  include/Data.h \
   include/GrabCut.h \
   include/Gmm.h \
 	include/Graph.h \
+	include/PRGraph.h \
 	include/IGraph.h \
 	include/FGraph.h \
+	include/ibfs/ibfs.h \
+	include/ibfs/ibfs.cpp \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \
