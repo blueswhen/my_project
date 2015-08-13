@@ -21,6 +21,7 @@
 #include "include/UserInput.h"
 #include "include/IGraph.h"
 #include "include/FGraph.h"
+#include "include/IFGraph.h"
 #include "include/Graph.h"
 #include "include/PRGraph.h"
 #include "include/gcgraph.hpp"
@@ -149,6 +150,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define OPENCV_MAXFLOW 0
 #define IGRAPH 0
 #define FGRAPH 0
+#define IFGRAPH 0
 
 #if MY_MAXFLOW
   user::Graph<double> graph(vtx_count, edge_count);
@@ -161,7 +163,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   IBFSGraph graph;
   graph.initSize(vtx_count, edge_count);
 #elif PR_MAXFLOW
-  PRGraph<double> graph(vtx_count, edge_count);
+  PRGraph<double> graph(vtx_count, 2 * edge_count, width, height, marked_image);
 #endif
 
 #if IGRAPH
@@ -172,6 +174,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   FGraph<double, EPF> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #endif
 
+#if IFGRAPH
+  IFGraph<double, EPF> ifgraph(vtx_count, width, height, EdgePunishItem, marked_image);
+#endif
   // e1[0] is background, e1[1] is subject
   double e1[2] = {0, 0};
   const double lamda = LAMDA;
@@ -223,6 +228,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #if FGRAPH
       fgraph.AddNode(vtx0, e1[0], e1[1], colour);
       fgraph.AddActiveNodes(x, y);
+#endif
+#if IFGRAPH
+      ifgraph.AddNode(vtx0, e1[0], e1[1], colour);
+      ifgraph.AddActiveNodes(x, y);
 #endif
 
 #if ADD_EDGE
@@ -313,23 +322,24 @@ ct.ContBegin();
 ct.ContEnd();
 ct.PrintTime();
 #elif IB_MAXFLOW
-ct.ContBegin();
+// ct.ContBegin();
   graph.initGraph();
   graph.computeMaxFlow();
-ct.ContEnd();
-ct.PrintTime();
+// ct.ContEnd();
+// ct.PrintTime();
 #elif PR_MAXFLOW
 ct.ContBegin();
+  graph.Initialization();
   graph.MaxFlow();
 ct.ContEnd();
 ct.PrintTime();
 #endif
 
 #if IGRAPH
-// ct.ContBegin();
+ct.ContBegin();
   igraph.MaxFlow();
-// ct.ContEnd();
-// ct.PrintTime();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 
 #if FGRAPH
@@ -337,6 +347,13 @@ ct.PrintTime();
   fgraph.MaxFlow();
 // ct.ContEnd();
 // ct.PrintTime();
+#endif
+
+#if IFGRAPH
+ct.ContBegin();
+  ifgraph.MaxFlow();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 #endif
 
@@ -386,6 +403,12 @@ ct.PrintTime();
         }
 #elif IGRAPH
         if (igraph.IsBelongToSource(vtx0)) {
+          SET_PIXEL(marked_image, index, SUBJECT);
+        } else {
+          SET_PIXEL(marked_image, index, BACKGROUND);
+        }
+#elif IFGRAPH
+        if (ifgraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);

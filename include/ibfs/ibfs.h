@@ -1,50 +1,15 @@
-/*
-#########################################################
-#                                                       #
-#  IBFSGraph -  Software for solving                    #
-#               Maximum s-t Flow / Minimum s-t Cut      #
-#               using the IBFS algorithm                #
-#                                                       #
-#  http://www.cs.tau.ac.il/~sagihed/ibfs/               #
-#                                                       #
-#  Haim Kaplan (haimk@cs.tau.ac.il)                     #
-#  Sagi Hed (sagihed@post.tau.ac.il)                    #
-#                                                       #
-#########################################################
-
-This software implements the IBFS (Incremental Breadth First Search) maximum flow algorithm from
-	"Maximum flows by incremental breadth-first search"
-	Andrew V. Goldberg, Sagi Hed, Haim Kaplan, Robert E. Tarjan, and Renato F. Werneck.
-	In Proceedings of the 19th European conference on Algorithms, ESA'11, pages 457-468.
-	ISBN 978-3-642-23718-8
-	2011
-
-Copyright Haim Kaplan (haimk@cs.tau.ac.il) and Sagi Hed (sagihed@post.tau.ac.il)
-
-###########
-# LICENSE #
-###########
-This software can be used for research purposes only.
-If you use this software for research purposes, you should cite the aforementioned paper
-in any resulting publication and appropriately credit it.
-
-If you require another license, please contact the above.
-
-*/
-
-
 #ifndef _IBFS_H__
 #define _IBFS_H__
 
 #include <stdio.h>
 #include <string.h>
 
+#define IBDEBUG(X) fprintf(stdout, X"\n"); fflush(stdout)
 #define IB_ORPHANS_END   ( (Node *) 1 )
 
 class IBFSGraph
 {
 public:
-
 	IBFSGraph();
 	~IBFSGraph();
 	void initSize(int numNodes, int numEdges);
@@ -54,6 +19,16 @@ public:
 	double computeMaxFlow();
 	bool isNodeOnSrcSide(int nodeIndex);
 
+	// inline int getFlow() {
+	// 	return m_flow;
+	// }
+	// inline int getNumNodes() {
+	// 	return m_nodeEnd-m_nodes;
+	// }
+	// inline int getNumArcs() {
+	// 	return m_arcEnd-m_arcs;
+	// }
+
 private:
 	struct Node;
 	struct Arc;
@@ -62,20 +37,19 @@ private:
 	{
 		Node*		head;
 		Arc*		rev;
-		int			isRevResidual :1;
-		double rCap;
+		bool    isRevResidual;
+		double  rCap;
 	};
 
-	struct Node
+	class Node
 	{
-		int			lastAugTimestamp:31;
-		int			isParentCurr:1;
+	public:
 		Arc			*firstArc;
 		Arc			*parent;
 		Node		*firstSon;
 		Node		*nextPtr;
 		int			label;	// label > 0: distance from s, label < 0: -distance from t
-		double excess;	 // excess > 0: capacity from s, excess < 0: -capacity to t
+		double  excess;	 // excess > 0: capacity from s, excess < 0: -capacity to t
 	};
 
 	class ActiveList
@@ -112,21 +86,21 @@ private:
 	};
 
 	// members
-	Node	*nodes, *nodeEnd;
-	Arc		*arcs, *arcEnd;
-	int 	numNodes;
-	double flow;
-	short 	augTimestamp;
-	unsigned int uniqOrphansS, uniqOrphansT;
-	Node* orphanFirst;
-	Node* orphanLast;
-	int topLevelS, topLevelT;
-	ActiveList active0, activeS1, activeT1;
+	Node	*m_nodes, *m_nodeEnd;
+	Arc		*m_arcs, *m_arcEnd;
+	int 	m_numNodes;
+	double m_flow;
+	unsigned int m_uniqOrphansS, m_uniqOrphansT;
+	Node* m_orphanFirst;
+	Node* m_orphanLast;
+	int m_topLevelS, m_topLevelT;
+	ActiveList m_active0, m_activeS1, m_activeT1;
 
 	void augment(Arc *bridge);
 	template<bool sTree> void augmentTree(Node *x, double bottleneck);
 	template <bool sTree> void adoption();
 	template <bool dirS> void growth();
+
 
 	//
 	// Initialization
@@ -135,49 +109,49 @@ private:
 	{
 		Node*		head;
 		Node*		tail;
-		double cap;
-		double revCap;
+	  double 	cap;
+		double  revCap;
 	};
 	struct TmpArc
 	{
 		TmpArc		*rev;
 		double cap;
 	};
-	char	*memArcs;
-	TmpEdge	*tmpEdges, *tmpEdgeLast;
-	TmpArc	*tmpArcs;
+	char	*m_memArcs;
+	TmpEdge	*m_tmpEdges, *m_tmpEdgeLast;
+	TmpArc	*m_tmpArcs;
 	void initGraphFast();
 	void initGraphCompact();
 };
 
 inline void IBFSGraph::addNode(int nodeIndex, double capacitySource, double capacitySink)
 {
-	double f = nodes[nodeIndex].excess;
-	if (f > 0) {
-		capacitySource += f;
-	} else {
-		capacitySink -= f;
-	}
+	// int f = m_nodes[nodeIndex].excess;
+	// if (f > 0) {
+	// 	capacitySource += f;
+	// } else {
+	// 	capacitySink -= f;
+	// }
 	if (capacitySource < capacitySink) {
-		flow += capacitySource;
+		m_flow += capacitySource;
 	} else {
-		flow += capacitySink;
+		m_flow += capacitySink;
 	}
-	nodes[nodeIndex].excess = capacitySource - capacitySink;
+	m_nodes[nodeIndex].excess = capacitySource - capacitySink;
 }
 
 inline void IBFSGraph::addEdge(int nodeIndexFrom, int nodeIndexTo, double capacity, double reverseCapacity)
 {
-	tmpEdgeLast->tail = nodes + nodeIndexFrom;
-	tmpEdgeLast->head = nodes + nodeIndexTo;
-	tmpEdgeLast->cap = capacity;
-	tmpEdgeLast->revCap = reverseCapacity;
-	tmpEdgeLast++;
+	m_tmpEdgeLast->tail = m_nodes + nodeIndexFrom;
+	m_tmpEdgeLast->head = m_nodes + nodeIndexTo;
+	m_tmpEdgeLast->cap = capacity;
+	m_tmpEdgeLast->revCap = reverseCapacity;
+	m_tmpEdgeLast++;
 
 	// use label as a temporary storage
 	// to count the out degree of nodes
-	nodes[nodeIndexFrom].label++;
-	nodes[nodeIndexTo].label++;
+	m_nodes[nodeIndexFrom].label++;
+	m_nodes[nodeIndexTo].label++;
 
 	/*
 	Arc *aFwd = arcLast;
@@ -200,10 +174,10 @@ inline void IBFSGraph::addEdge(int nodeIndexFrom, int nodeIndexTo, double capaci
 
 inline bool IBFSGraph::isNodeOnSrcSide(int nodeIndex)
 {
-	if (nodes[nodeIndex].label == numNodes || nodes[nodeIndex].label == 0) {
-		return activeT1.len == 0;
+	if (m_nodes[nodeIndex].label == m_numNodes || m_nodes[nodeIndex].label == 0) {
+		return m_activeT1.len == 0;
 	}
-	return (nodes[nodeIndex].label > 0);
+	return (m_nodes[nodeIndex].label > 0);
 }
 
 #endif

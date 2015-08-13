@@ -1,6 +1,6 @@
 // Copyright 2014-12 sxniu
-#ifndef INCLUDE_FGRAPH_H_
-#define INCLUDE_FGRAPH_H_
+#ifndef INCLUDE_IFGRAPH_H_
+#define INCLUDE_IFGRAPH_H_
 
 #include <vector>
 #include <list>
@@ -29,7 +29,7 @@
 #define ENABLE_BFS
 #define ENABLE_PAR
 
-const double fgraph_div_sqrt2 = 1 / sqrt(2.0f);
+const double ifgraph_div_sqrt2 = 1 / sqrt(2.0f);
 
 #define FOUR_ARR_INDEX(node_x, node_y, image_width, image_height) \
 { \
@@ -52,7 +52,7 @@ const double fgraph_div_sqrt2 = 1 / sqrt(2.0f);
 }
 
 template <class CapType, class EdgePunishFun>
-class FGraph {
+class IFGraph {
  public:
   struct Node;
   enum NodeState {
@@ -84,7 +84,7 @@ class FGraph {
     Node* m_next_active;
   };
 
-  FGraph(int max_nodes_number, int image_width,
+  IFGraph(int max_nodes_number, int image_width,
          int image_height, EdgePunishFun epf, ImageData<int>* marked_image);
   void AddNode(int node_id, CapType source_capacity, CapType sink_capacity, int node_colour);
   void AddActiveNodes(int node_x, int node_y);
@@ -132,7 +132,7 @@ class FGraph {
     }
   }
   void AddOrphanNode(Node* orphan_node) {
-    assert(orphan_node->m_parent_edge != ORPHAN);
+    // assert(orphan_node->m_parent_edge != ORPHAN);
     orphan_node->m_parent_edge = ORPHAN;
     m_orphan_nodes.push(orphan_node);
   }
@@ -164,7 +164,8 @@ class FGraph {
     return active_node;
   }
 
-  void FindNewPath(Node* orphan_node);
+  int Augment(Edge* meet_edge);
+  bool FindNewPath(Node* orphan_node);
   void CreateOutEdges(Node* cen_node);
   Edge* GetEdge(Node* src_node, Node* dst_node);
   Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor);
@@ -183,7 +184,7 @@ class FGraph {
 };
 
 template <class CapType, class EdgePunishFun>
-FGraph<CapType, EdgePunishFun>::FGraph(int max_nodes_number, int image_width, int image_height,
+IFGraph<CapType, EdgePunishFun>::IFGraph(int max_nodes_number, int image_width, int image_height,
                                        EdgePunishFun epf, ImageData<int>* marked_image)
   : m_flow(0)
   , m_first_at_node(NULL)
@@ -198,7 +199,7 @@ FGraph<CapType, EdgePunishFun>::FGraph(int max_nodes_number, int image_width, in
   }
 
 template <class CapType, class EdgePunishFun>
-void FGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacity,
+void IFGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacity,
                               CapType sink_capacity, int node_colour) {
   m_flow += source_capacity < sink_capacity ? source_capacity : sink_capacity;
   CapType node_capacity = source_capacity - sink_capacity;
@@ -221,7 +222,7 @@ void FGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacit
 }
 
 template <class CapType, class EdgePunishFun>
-void FGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
+void IFGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
   int index = node_y * m_image_width + node_x;
   Node* cen_node = &m_nodes[index];
   int arr_index[HALF_NEIGHBOUR] =
@@ -230,14 +231,13 @@ void FGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
     Node* arr_node = &m_nodes[arr_index[i]];
     if (cen_node->m_node_state != arr_node->m_node_state) {
       AddActiveNodeBack(cen_node);
-      // AddActiveNodeBack(arr_node);
       break;
     }
   }
 }
 
 template <class CapType, class EdgePunishFun>
-typename FGraph<CapType, EdgePunishFun>::Edge* FGraph<CapType, EdgePunishFun>::GetEdge(
+typename IFGraph<CapType, EdgePunishFun>::Edge* IFGraph<CapType, EdgePunishFun>::GetEdge(
   Node* src_node, Node* dst_node) {
   for (int i = 0; i < src_node->m_out_edges_num; ++i) {
     if (src_node->m_out_edges[i].m_dst_node == dst_node) {
@@ -248,7 +248,7 @@ typename FGraph<CapType, EdgePunishFun>::Edge* FGraph<CapType, EdgePunishFun>::G
 }
 
 template <class CapType, class EdgePunishFun>
-typename FGraph<CapType, EdgePunishFun>::Edge* FGraph<CapType, EdgePunishFun>::CreateEdge(
+typename IFGraph<CapType, EdgePunishFun>::Edge* IFGraph<CapType, EdgePunishFun>::CreateEdge(
   Node* src_node, Node* dst_node, double punish_factor) {
   Edge* edge = &src_node->m_out_edges[src_node->m_out_edges_num++];
   Edge* rev_edge = &dst_node->m_out_edges[dst_node->m_out_edges_num++];
@@ -263,7 +263,7 @@ typename FGraph<CapType, EdgePunishFun>::Edge* FGraph<CapType, EdgePunishFun>::C
 }
 
 template <class CapType, class EdgePunishFun>
-void FGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
+void IFGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
   assert(cen_node != NULL);
   if (cen_node->m_is_gotten_all_edges) {
     return;
@@ -284,7 +284,7 @@ void FGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
           abs(arr_nodes_idx[i] - cen_node->m_node_idx) == m_image_width) {
         punish_factor = 1;
       } else {
-        punish_factor = fgraph_div_sqrt2;
+        punish_factor = ifgraph_div_sqrt2;
       }
       CreateEdge(cen_node, arr_node, punish_factor);
     }
@@ -293,7 +293,7 @@ void FGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
 }
 
 template <class CapType, class EdgePunishFun>
-void FGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
+bool IFGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
   int dist_min = INIFINITE_DIST;
   CapType max_node_cap = 0;
   Edge* connected_edge_min = NULL;
@@ -322,11 +322,17 @@ void FGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
           parent_edge = dst_node->m_parent_edge;
           dist++;
           if (parent_edge == TERMINAL) {
-            dst_node->m_timestamp = m_global_timestamp;
-            dst_node->m_terminal_dist = 1;
-            // node_cap = dst_node->m_residue_capacity > 0 ?
-            //   dst_node->m_residue_capacity : -dst_node->m_residue_capacity;
-            break;
+            if (dst_node->m_residue_capacity) {
+              dst_node->m_timestamp = m_global_timestamp;
+              dst_node->m_terminal_dist = 1;
+              // node_cap = dst_node->m_residue_capacity > 0 ?
+              //   dst_node->m_residue_capacity : -dst_node->m_residue_capacity;
+              break;
+            } else {
+              AddOrphanNode(dst_node);
+              AddOrphanNode(orphan_node);
+              return false;
+            }
           }
           if (parent_edge == ORPHAN) {
             dist = INIFINITE_DIST;
@@ -359,10 +365,89 @@ void FGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
     orphan_node->m_timestamp = m_global_timestamp;
     orphan_node->m_terminal_dist = connected_edge_min->m_dst_node->m_terminal_dist + 1;
   }
+  return true;
 }
 
 template <class CapType, class EdgePunishFun>
-void FGraph<CapType, EdgePunishFun>::MaxFlow() {
+int IFGraph<CapType, EdgePunishFun>::Augment(Edge* meet_edge) {
+  int path = 0;
+  // augment path
+  Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
+	CapType min_capacity = meet_edge->m_edge_capacity;
+  // first_edge[0] for source tree and first_edge[1] for sink tree
+  // find min capacity from path
+  Node* src_node[2];
+  for (int i = 0; i < 2; ++i) {
+    Node* parent_node = first_edge[i]->m_dst_node;
+    parent_node->m_child_edge = NULL;
+    for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
+         parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
+      parent_edge->m_dst_node->m_child_edge = parent_edge->m_rev_edge;
+    }
+    if (!parent_node->m_residue_capacity) {
+      AddOrphanNode(parent_node);
+      return 0;
+    }
+    src_node[i] = parent_node;
+  }
+  for (int i = 0; i < 2; ++i) {
+    Node* child_node = src_node[i];
+    // child_node->m_parent_edge = NULL;
+    assert(child_node->m_residue_capacity);
+    int factor = 1 - 2 * i;
+    for (Edge* child_edge = child_node->m_child_edge; child_edge;
+         child_node = child_edge->m_dst_node, child_edge = child_node->m_child_edge) {
+      Edge* flow_edge = i == 0 ? child_edge : child_edge->m_rev_edge;
+      CapType send_flow = std::min(factor * child_node->m_residue_capacity,
+                                   flow_edge->m_edge_capacity);
+      child_node->m_residue_capacity -= factor * send_flow;
+      flow_edge->m_edge_capacity -= send_flow;
+      flow_edge->m_rev_edge->m_edge_capacity += send_flow;
+      child_edge->m_dst_node->m_residue_capacity += factor * send_flow;
+      if (!flow_edge->m_edge_capacity) {
+        child_edge->m_dst_node->m_parent_edge = TERMINAL;
+      }
+      if (child_node->m_residue_capacity) {
+        child_node->m_parent_edge = TERMINAL;
+        child_node->m_terminal_dist = 1;
+      }
+      path++;
+    }
+  }
+  Node* source_node = first_edge[0]->m_dst_node;
+  Node* sink_node = first_edge[1]->m_dst_node;
+  CapType min_excess = std::min(source_node->m_residue_capacity,
+                                -sink_node->m_residue_capacity);
+  CapType flow = std::min(first_edge[1]->m_edge_capacity, min_excess);
+  source_node->m_residue_capacity -= flow;
+  sink_node->m_residue_capacity += flow;
+  first_edge[0]->m_edge_capacity += flow;
+  first_edge[1]->m_edge_capacity -= flow;
+  if (source_node->m_residue_capacity) {
+    source_node->m_parent_edge = TERMINAL;
+    source_node->m_terminal_dist = 1;
+  }
+  if (sink_node->m_residue_capacity) {
+    sink_node->m_parent_edge = TERMINAL;
+    sink_node->m_terminal_dist = 1;
+  }
+  for (int i = 0; i < 2; ++i) {
+    Node* path_node = first_edge[i]->m_dst_node;
+    if (path_node->m_residue_capacity) {
+      assert(path_node->m_parent_edge == TERMINAL);
+      continue;
+    }
+    for (; path_node->m_parent_edge != TERMINAL; path_node = path_node->m_parent_edge->m_dst_node) {
+      assert(path_node->m_parent_edge);
+    }
+    AddOrphanNode(path_node);
+  }
+  m_flow += flow;
+  return path;
+}
+
+template <class CapType, class EdgePunishFun>
+void IFGraph<CapType, EdgePunishFun>::MaxFlow() {
   m_mid_at_node = m_last_at_node;
   Node* at_node = NULL;
   Edge* meet_edge = NULL;
@@ -395,6 +480,7 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
       if (capacity != 0) {
         Node* dst_node = connected_edge->m_dst_node;
         if (!dst_node->m_parent_edge) {
+          assert(!dst_node->m_residue_capacity);
           dst_node->m_parent_edge = connected_edge->m_rev_edge;
           dst_node->m_timestamp = at_node->m_timestamp;
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
@@ -418,62 +504,16 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
     m_global_timestamp++;
 
     if (meet_edge) {
-      int origion_length = meet_edge->m_dst_node->m_terminal_dist +
-                           meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
-      // augment path
-      Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
-	    CapType min_capacity = meet_edge -> m_edge_capacity;
-      // first_edge[0] for source tree and first_edge[1] for sink tree
-      // find min capacity from path
-      path = 0;
-      for (int i = 0; i < 2; ++i) {
-        Node* parent_node = first_edge[i]->m_dst_node;
-#ifdef ENABLE_BFS
-        parent_node->m_child_edge = NULL;
-#endif
-        for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
-             parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
-          assert(parent_edge);
-#ifdef ENABLE_BFS
-          parent_edge->m_dst_node->m_child_edge = parent_edge->m_rev_edge;
-#endif
-          Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
-          CapType cap = edge->m_edge_capacity;
-          if (cap < min_capacity) {
-            min_capacity = cap;
-          }
-          path++;
-        }
-        CapType node_cap = parent_node->m_residue_capacity;
-        CapType final_node_capacity = i == 0 ? node_cap : -node_cap; 
-        if (final_node_capacity < min_capacity) {
-          min_capacity = final_node_capacity;
-        }
-      }
-      // printf("path = %d\n", path);
-      
-      first_edge[0]->m_edge_capacity += min_capacity;
-      first_edge[1]->m_edge_capacity -= min_capacity;
-      for (int i = 0; i < 2; ++i) {
-        Node* parent_node = first_edge[i]->m_dst_node;
-        int factor = 2 * i - 1;
-        for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
-             parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
-          parent_edge->m_edge_capacity += (-factor) * min_capacity;
-          parent_edge->m_rev_edge->m_edge_capacity += factor * min_capacity;
-          Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
-          if (!edge->m_edge_capacity) {
-            AddOrphanNode(parent_node);
-            broken_edges++;
-          }
-        }
-        parent_node->m_residue_capacity += factor * min_capacity;
-        if (!parent_node->m_residue_capacity) {
-          AddOrphanNode(parent_node);
-        }
-      }
-      m_flow += min_capacity;
+      bool edge_saturtation = false;
+      path += Augment(meet_edge);
 
+#ifdef ENABLE_PAR
+      if (edge_saturtation) {
+        AddActiveNodeFront(at_node);
+      } else {
+        AddActiveNodeMid(at_node);
+      }
+#endif
       // adopt orphan nodes
       while (true) {
         Node* orphan_node = GetOrphanNode();
@@ -481,7 +521,10 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
           break;
         }
 
-        FindNewPath(orphan_node);
+        bool success = FindNewPath(orphan_node);
+        if (!success) {
+          continue;
+        }
 
         if (orphan_node->m_parent_edge) {
           // SET_PIXEL(m_marked_image, orphan_node->m_node_idx, orphan_node->m_node_state == SOURCE ? RED : BLUE);
@@ -517,27 +560,18 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
           }
         }
       }
-#ifdef ENABLE_PAR
-      int new_length = meet_edge->m_dst_node->m_terminal_dist +
-                       meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
-      if (new_length > origion_length) {
-        AddActiveNodeMid(at_node);
-      } else {
-        AddActiveNodeFront(at_node);
-      }
-#endif
     }
   }
-  // printf("augment path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
-  //        path, tree_edges, broken_edges, m_flow);
+  printf("augment path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
+         path, tree_edges, broken_edges, m_flow);
 }
 
 template <class CapType, class EdgePunishFun>
-bool FGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
+bool IFGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
   return m_nodes[node_id].m_node_state == SOURCE;
 }
 
 #undef TERMINAL
 #undef ORPHAN
 #undef EIGHT_ARR_INDEX
-#endif  // INCLUDE_FGRAPH_H_
+#endif  // INCLUDE_IFGRAPH_H_

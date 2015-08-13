@@ -69,7 +69,7 @@ int main(int argc, char** argv) {
     ls.DoPartition();
     // GrabCut gc(&sd, &da);
     // gc.DoPartition();
-    utils::SaveImage(IMAGE_OUT_NAME, src);
+    // utils::SaveImage(IMAGE_OUT_NAME, src);
     return 0;
   }
 #endif
@@ -135,8 +135,8 @@ int main(int argc, char** argv) {
 
 exit_main:
     cv::destroyWindow(ui::WIN_NAME);
-    utils::SaveImage(IMAGE_OUT_NAME, src);
-    // utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
+    // utils::SaveImage(IMAGE_OUT_NAME, src);
+    utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_2, *scale_50_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME_3, *scale_25_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME, scale_25_src);

@@ -26,6 +26,7 @@ lazysnapping : \
 	include/PRGraph.h \
 	include/IGraph.h \
 	include/FGraph.h \
+	include/IFGraph.h \
 	include/ibfs/ibfs.h \
 	include/ibfs/ibfs.cpp \
   src/utils.cpp \

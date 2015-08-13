@@ -126,11 +126,9 @@ class IGraph {
     Node* active_node = NULL;
     while (m_first_at_node) {
       active_node = m_first_at_node;
-      if (m_first_at_node) {
-        m_first_at_node = m_first_at_node->m_next_active;
-        if (!m_first_at_node) {
-          m_last_at_node = NULL;
-        }
+      m_first_at_node = m_first_at_node->m_next_active;
+      if (!m_first_at_node) {
+        m_last_at_node = NULL;
       }
       active_node->m_is_active = false;
       if (active_node->m_parent_edge) {
