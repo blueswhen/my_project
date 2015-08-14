@@ -143,17 +143,17 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   int edge_count = 4 * vtx_count - 3 * (width + height) + 2;
 
 #define ADD_EDGE 1
-#define MY_MAXFLOW 0
+#define MY_MAXFLOW 1
 #define B_MAXFLOW 0
 #define IB_MAXFLOW 0
-#define PR_MAXFLOW 1
+#define PR_MAXFLOW 0
 #define OPENCV_MAXFLOW 0
 #define IGRAPH 0
 #define FGRAPH 0
 #define IFGRAPH 0
 
 #if MY_MAXFLOW
-  user::Graph<double> graph(vtx_count, edge_count);
+  user::Graph<double> graph(vtx_count, 2 * edge_count);
 #elif B_MAXFLOW
   GraphType graph(vtx_count, edge_count);
 #elif OPENCV_MAXFLOW
@@ -312,21 +312,21 @@ ct.ContBegin();
 ct.ContEnd();
 ct.PrintTime();
 #elif B_MAXFLOW
-// ct.ContBegin();
+ct.ContBegin();
   graph.maxflow();
-// ct.ContEnd();
-// ct.PrintTime();
+ct.ContEnd();
+ct.PrintTime();
 #elif OPENCV_MAXFLOW
 ct.ContBegin();
   graph.maxFlow();
 ct.ContEnd();
 ct.PrintTime();
 #elif IB_MAXFLOW
-// ct.ContBegin();
+ct.ContBegin();
   graph.initGraph();
   graph.computeMaxFlow();
-// ct.ContEnd();
-// ct.PrintTime();
+ct.ContEnd();
+ct.PrintTime();
 #elif PR_MAXFLOW
 ct.ContBegin();
   graph.Initialization();
@@ -343,10 +343,10 @@ ct.PrintTime();
 #endif
 
 #if FGRAPH
-// ct.ContBegin();
+ct.ContBegin();
   fgraph.MaxFlow();
-// ct.ContEnd();
-// ct.PrintTime();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 
 #if IFGRAPH

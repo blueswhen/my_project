@@ -28,6 +28,7 @@ lazysnapping : \
 	include/FGraph.h \
 	include/IFGraph.h \
 	include/ibfs/ibfs.h \
+	include/maxflow-v3.03/graph.h \
 	include/ibfs/ibfs.cpp \
   src/utils.cpp \
   src/main.cpp \

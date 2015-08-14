@@ -418,8 +418,10 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
     m_global_timestamp++;
 
     if (meet_edge) {
+#ifdef ENABLE_PAR
       int origion_length = meet_edge->m_dst_node->m_terminal_dist +
                            meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
+#endif
       // augment path
       Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
 	    CapType min_capacity = meet_edge -> m_edge_capacity;
@@ -520,8 +522,9 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
 #ifdef ENABLE_PAR
       int new_length = meet_edge->m_dst_node->m_terminal_dist +
                        meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
+      // AddActiveNodeBack(at_node);
       if (new_length > origion_length) {
-        AddActiveNodeMid(at_node);
+        AddActiveNodeBack(at_node);
       } else {
         AddActiveNodeFront(at_node);
       }
@@ -540,4 +543,6 @@ bool FGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
 #undef TERMINAL
 #undef ORPHAN
 #undef EIGHT_ARR_INDEX
+#undef ENABLE_BFS
+#undef ENABLE_PAR
 #endif  // INCLUDE_FGRAPH_H_

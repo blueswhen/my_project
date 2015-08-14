@@ -1,3 +1,7 @@
+#define ENABLE_BFS
+#define ENABLE_PAR
+#include <assert.h>
+
 /* graph.h */
 /*
     Copyright Vladimir Kolmogorov (vnk@ist.ac.at), Yuri Boykov (yuri@csd.uwo.ca) 
@@ -294,6 +298,9 @@ private:
 		int			is_sink : 1;	// flag showing whether the node is in the source or in the sink tree (if parent!=NULL)
 		int			is_marked : 1;	// set by mark_node()
 		int			is_in_changed_list : 1; // set by maxflow if 
+#ifdef ENABLE_BFS
+    arc     *m_child_edge;
+#endif
 
 		tcaptype	tr_cap;		// if tr_cap > 0 then tr_cap is residual capacity of the arc SOURCE->node
 								// otherwise         -tr_cap is residual capacity of the arc node->SINK 
@@ -350,6 +357,7 @@ private:
 
 	// functions for processing active list
 	void set_active(node *i);
+	void set_active_before(node *i);
 	node *next_active();
 
 	// functions for processing orphans list
@@ -672,6 +680,22 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 }
 
+template <typename captype, typename tcaptype, typename flowtype> 
+	inline void Graph<captype,tcaptype,flowtype>::set_active_before(node *i)
+{
+	if (!i->next)
+	{
+		/* it's not in the list yet */
+    assert(queue_first[0] || queue_first[1]);
+    if (queue_first[0]) {
+      i->next = queue_first[0]; 
+      queue_first[0] = i;
+    } else if (queue_first[1]) {
+      i->next = queue_first[1]; 
+      queue_first[1] = i;
+    }
+	}
+}
 /*
 	Returns the next active node.
 	If it is connected to the sink, it stays in the list,
@@ -880,20 +904,32 @@ template <typename captype, typename tcaptype, typename flowtype>
 	/* 1. Finding bottleneck capacity */
 	/* 1a - the source tree */
 	bottleneck = middle_arc -> r_cap;
+#ifdef ENABLE_BFS
+  middle_arc->sister->head->m_child_edge = NULL;
+#endif
 	for (i=middle_arc->sister->head; ; i=a->head)
 	{
     path++;
 		a = i -> parent;
 		if (a == TERMINAL) break;
+#ifdef ENABLE_BFS
+    a->head->m_child_edge = a->sister;
+#endif
 		if (bottleneck > a->sister->r_cap) bottleneck = a -> sister -> r_cap;
 	}
 	if (bottleneck > i->tr_cap) bottleneck = i -> tr_cap;
 	/* 1b - the sink tree */
+#ifdef ENABLE_BFS
+  middle_arc->head->m_child_edge = NULL;
+#endif
 	for (i=middle_arc->head; ; i=a->head)
 	{
     path++;
 		a = i -> parent;
 		if (a == TERMINAL) break;
+#ifdef ENABLE_BFS
+    a->head->m_child_edge = a->sister;
+#endif
 		if (bottleneck > a->r_cap) bottleneck = a -> r_cap;
 	}
 	if (bottleneck > - i->tr_cap) bottleneck = - i -> tr_cap;
@@ -1001,6 +1037,15 @@ template <typename captype, typename tcaptype, typename flowtype>
 		i -> TS = TIME;
 		i -> DIST = d_min + 1;
     tree_edges++;
+#ifdef ENABLE_BFS
+    if (i->m_child_edge) {
+      node* child_node = i->m_child_edge->head;
+      if (child_node->parent == i->m_child_edge->sister &&
+          child_node->DIST <= i->DIST) {
+        set_orphan_rear(child_node); 
+      }
+    }
+#endif
 	}
 	else
 	{
@@ -1080,6 +1125,15 @@ template <typename captype, typename tcaptype, typename flowtype>
 		i -> TS = TIME;
 		i -> DIST = d_min + 1;
     tree_edges++;
+#ifdef ENABLE_BFS
+    if (i->m_child_edge) {
+      node* child_node = i->m_child_edge->head;
+      if (child_node->parent == i->m_child_edge->sister &&
+          child_node->DIST <= i->DIST) {
+        set_orphan_rear(child_node); 
+      }
+    }
+#endif
 	}
 	else
 	{
@@ -1104,7 +1158,6 @@ template <typename captype, typename tcaptype, typename flowtype>
 }
 
 /***********************************************************************/
-
 template <typename captype, typename tcaptype, typename flowtype> 
 	flowtype Graph<captype,tcaptype,flowtype>::maxflow(bool reuse_trees, Block<node_id>* _changed_list)
 {
@@ -1130,13 +1183,16 @@ template <typename captype, typename tcaptype, typename flowtype>
 	// main loop
 	while ( 1 )
 	{
+#ifndef ENABLE_PAR
 		// test_consistency(current_node);
-
 		if ((i=current_node))
 		{
 			i -> next = NULL; /* remove active flag */
 			if (!i->parent) i = NULL;
 		}
+#else
+    i = NULL;
+#endif
 		if (!i)
 		{
 			if (!(i = next_active())) break;
@@ -1204,6 +1260,9 @@ template <typename captype, typename tcaptype, typename flowtype>
 
 		if (a)
 		{
+#ifdef ENABLE_PAR
+      int origion_length = a->head->DIST + a->sister->head->DIST;
+#endif
 			i -> next = i; /* set active flag */
 			current_node = i;
 
@@ -1230,6 +1289,16 @@ template <typename captype, typename tcaptype, typename flowtype>
 				orphan_first = np_next;
 			}
 			/* adoption end */
+#ifdef ENABLE_PAR
+      current_node->next = NULL;
+      int new_length = a->head->DIST + a->sister->head->DIST;
+      // set_active(current_node);
+      if (new_length > origion_length) {
+        set_active_before(current_node);
+      } else {
+        set_active(current_node);
+      }
+#endif
 		}
 		else current_node = NULL;
 	}
@@ -1326,4 +1395,6 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 }
 
+#undef ENABLE_BFS
+#undef ENABLE_PAR
 #endif
