@@ -1,5 +1,5 @@
-#define ENABLE_BFS
-#define ENABLE_PAR
+// #define ENABLE_BFS
+// #define ENABLE_PAR
 #include <assert.h>
 
 /* graph.h */

@@ -153,8 +153,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define IFGRAPH 0
 
 #if MY_MAXFLOW
-  user::Graph<double> graph(vtx_count, 2 * edge_count);
-#elif B_MAXFLOW
+  user::Graph<double> mygraph(vtx_count, 2 * edge_count);
+#endif
+
+#if B_MAXFLOW
   GraphType graph(vtx_count, edge_count);
 #elif OPENCV_MAXFLOW
   GCGraph<double> graph;
@@ -208,8 +210,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       }
       int vtx0 = BUILD_VTX(index);
 #if MY_MAXFLOW
-      graph.AddNode(vtx0, e1[0], e1[1]);
-#elif B_MAXFLOW
+      mygraph.AddNode(vtx0, e1[0], e1[1]);
+#endif
+
+#if B_MAXFLOW
       graph.add_node();
       graph.add_tweights(vtx0, e1[0], e1[1]);
 #elif OPENCV_MAXFLOW
@@ -241,8 +245,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         int near_colour = GET_PIXEL(&source_image, index - 1);
         double e2 = lamda / (COLOUR_DIST(colour, near_colour) + 0.01);
 #if MY_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
-#elif B_MAXFLOW
+        mygraph.AddEdge(vtx0, vtx1, e2);
+#endif
+
+#if B_MAXFLOW
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
@@ -257,8 +263,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         int near_colour = GET_PIXEL(&source_image, index - width - 1);
         double e2 = lamda_div_sqrt2 / (COLOUR_DIST(colour, near_colour) + 0.01);
 #if MY_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
-#elif B_MAXFLOW
+        mygraph.AddEdge(vtx0, vtx1, e2);
+#endif
+
+#if B_MAXFLOW
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
@@ -273,8 +281,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         int near_colour = GET_PIXEL(&source_image, index - width);
         double e2 = lamda / (COLOUR_DIST(colour, near_colour) + 0.01);
 #if MY_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
-#elif B_MAXFLOW
+        mygraph.AddEdge(vtx0, vtx1, e2);
+#endif
+
+#if B_MAXFLOW
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
@@ -289,8 +299,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         int near_colour = GET_PIXEL(&source_image, index - width + 1);
         double e2 = lamda_div_sqrt2 / (COLOUR_DIST(colour, near_colour) + 0.01);
 #if MY_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
-#elif B_MAXFLOW
+        mygraph.AddEdge(vtx0, vtx1, e2);
+#endif
+
+#if B_MAXFLOW
         graph.add_edge(vtx0, vtx1, e2, e2);
 #elif OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
@@ -308,10 +320,12 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 CountTime ct;
 #if MY_MAXFLOW
 ct.ContBegin();
-  graph.MaxFlow();
+  mygraph.MaxFlow();
 ct.ContEnd();
 ct.PrintTime();
-#elif B_MAXFLOW
+#endif
+
+#if B_MAXFLOW
 ct.ContBegin();
   graph.maxflow();
 ct.ContEnd();
@@ -365,12 +379,14 @@ ct.PrintTime();
       if (marked_colour != IGNORED) {
         int vtx0 = BUILD_VTX(index);
 #if MY_MAXFLOW
-        if (graph.IsBelongToSource(vtx0)) {
+        if (mygraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
         }
-#elif B_MAXFLOW
+#endif
+
+#if B_MAXFLOW
         if (graph.what_segment(vtx0) == GraphType::SOURCE) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
@@ -702,6 +718,7 @@ void LazySnapping::DoRightMouseMove(int x, int y) {
 void LazySnapping::DoLeftButtonUp(int x, int y) {
 #ifdef DRAW_LINE_TEST 
   m_usr_input->DrawSubjectFinish(x, y);
+  utils::SaveImage("result.bmp", *(m_sd->GetSourceImage()));
   DoPartition();
 #endif
 }

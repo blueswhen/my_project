@@ -276,6 +276,8 @@ void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
   int dist_min = INIFINITE_DIST;
   CapType max_node_cap = 0;
   Edge* connected_edge_min = NULL;
+  orphan_node->m_parent_edge = ORPHAN;
+  m_global_timestamp++;
 
   CreateOutEdges(orphan_node);
   for (int i = orphan_node->m_out_edges_num - 1; i >= 0; --i) {
@@ -382,8 +384,6 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       }
     }
 
-    m_global_timestamp++;
-
     if (meet_edge) {
       // augment path
       Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
@@ -472,9 +472,9 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       }
     }
   }
-  // printf("augment path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
-  //        path, tree_edges, broken_edges, m_flow);
-  printf("%f\n", static_cast<double>(m_edges_num)/(2 * (4 * m_image_width * m_image_height - 3 * (m_image_width + m_image_height) + 2)));
+  printf("augment path = %d, tree_edges = %d, broken_edges = %d, m_flow = %f\n",
+         path, tree_edges, broken_edges, m_flow);
+  // printf("%f\n", static_cast<double>(m_edges_num)/(2 * (4 * m_image_width * m_image_height - 3 * (m_image_width + m_image_height) + 2)));
 }
 
 template <class CapType, class EdgePunishFun>
