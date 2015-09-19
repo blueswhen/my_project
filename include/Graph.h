@@ -66,7 +66,7 @@ class Graph {
       , m_next_active(NULL)
       , m_is_active(false)
       , m_needed_flow(0)
-      , m_is_allow_recursion(false)
+      , m_next_node(NULL)
       , m_id(0) {}
     CapType m_excess;
     NodeState m_node_state;
@@ -80,7 +80,7 @@ class Graph {
     int m_tree_tag;
     int m_terminal_dist;
     CapType m_needed_flow;
-    bool m_is_allow_recursion;
+    Node* m_next_node;
     int m_id;
   };
 
@@ -165,10 +165,14 @@ class Graph {
   void Same(CapType& dst_val, CapType comp_val);
   void PushFlow(Node* src_node, Node* dst_node, Edge* flow_edge, CapType push_flow_capacity = 0);
   void FindNewOrphans(Node* orphan_node);
-  void AdoptNewPath(Node** node);
+  void AdoptNewPath(Node* node);
   void SetResFlow(Node* node);
 
-  void PushEnoughFlowToOneNode(std::stack<Node*>* nodes);
+  bool Empty(bool node_type);
+  void Push(Node* node);
+  Node*& Top(bool node_type);
+  void Pop(bool node_type);
+  void PushEnoughFlowToOneNode(bool node_type);
 
   void PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node);
   void PushEnoughFlow(Node* source_node, Node* sink_node, CapType* min_edge_capacity);
@@ -191,6 +195,8 @@ class Graph {
   bool m_is_source_end;
   CapType m_sink_res_flow;
   bool m_is_sink_end;
+  Node* m_top_source_node;
+  Node* m_top_sink_node;
   CapType m_flow;
 };
 
@@ -209,6 +215,8 @@ Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
   , m_is_source_end(false)
   , m_sink_res_flow(0)
   , m_is_sink_end(false)
+  , m_top_source_node(NULL)
+  , m_top_sink_node(NULL)
   , m_flow(0) {}
 
 template <class CapType>
@@ -289,8 +297,6 @@ void Graph<CapType>::PushFlow(Node* src_node, Node* dst_node, Edge* flow_edge,
   flow_edge->m_rev_edge->m_edge_capacity += flow;
   dst_node->m_needed_flow -= dst_node->m_node_state == SOURCE ? flow : -flow;
   Same(dst_node->m_needed_flow, 0);
-
-  src_node->m_is_allow_recursion = false;
 }
 
 template <class CapType>
@@ -316,103 +322,44 @@ void Graph<CapType>::FindNewOrphans(Node* orphan_node) {
 }
 
 template <class CapType>
-void Graph<CapType>::AdoptNewPath(Node** node) {
-  AddOrphanNode(*node);
-  bool no_parent = false;
-  std::vector<Node*> other_type_orphans;
+void Graph<CapType>::AdoptNewPath(Node* node) {
+  AddOrphanNode(node);
+  // std::vector<Node*> other_type_orphans;
   while (true) {
     Node* orphan_node = GetOrphanNode();
     if (!orphan_node) {
       break;
     }
-    if (orphan_node->m_node_state != (*node)->m_node_state) {
-      other_type_orphans.push_back(orphan_node);
-      continue;
-    }
+    // if (orphan_node->m_node_state != node->m_node_state) {
+    //   other_type_orphans.push_back(orphan_node);
+    //   continue;
+    // }
     FindNewPath(orphan_node);
     if (!orphan_node->m_parent_edge) {
       if (!orphan_node->m_child_edge && orphan_node->m_tree_tag == m_global_tree_tag) {
-        no_parent = true;
+        if (orphan_node->m_node_state == SOURCE) {
+          m_is_source_end = true;
+          if (-m_sink_res_flow < m_source_res_flow) {
+            m_is_sink_end = true;
+          }
+        } else {
+          m_is_sink_end = true;
+          if (m_source_res_flow < -m_sink_res_flow) {
+            m_is_source_end = true;
+          }
+        }
       } else {
         FindNewOrphans(orphan_node);
       }
     }
   }
-  for (int i = 0; i < other_type_orphans.size(); ++i) {
-    AddOrphanNode(other_type_orphans[i]);
-  }
-  if (!no_parent) {
-    Node* path_node = *node;
-    for (; !path_node->m_parent_edge; path_node = path_node->m_child_edge->m_dst_node) {
-      assert(path_node->m_child_edge);
-      Node* dst_node = path_node->m_child_edge->m_dst_node;
-      Edge* flow_edge = path_node->m_node_state == SOURCE ?
-        path_node->m_child_edge : path_node->m_child_edge->m_rev_edge;
-      assert(flow_edge->m_edge_capacity);
-      PushFlow(path_node, dst_node, flow_edge);
-      assert(!path_node->m_excess);
-    }
-    *node = path_node;
-    Edge* flow_edge = path_node->m_node_state == SINK ?
-      path_node->m_parent_edge : path_node->m_parent_edge->m_rev_edge;
-    assert(flow_edge->m_edge_capacity);
-  }
+  // for (int i = 0; i < other_type_orphans.size(); ++i) {
+  //   AddOrphanNode(other_type_orphans[i]);
+  // }
 }
-
-#if 0
-template <class CapType>
-void Graph<CapType>::PushEnoughFlowToNode(Node* node, CapType needed_flow, CapType* res_flow) {
-  assert(node->m_excess + needed_flow <= *res_flow);
-  if (node->m_parent_edge == TERMINAL) {
-    assert(node->m_excess > 0);
-    (*res_flow) -= node->m_excess;
-  }
-  while (true) {
-    if (node->m_parent_edge == TERMINAL || node->m_parent_edge == ORPHAN) {
-      AdoptNewPath(node);
-    }
-    if (node->m_parent_edge && needed_flow > 0) {
-      Node* dst_node = node->m_parent_edge->m_dst_node;
-      Edge* flow_edge = dst_node->m_node_state == SINK ?
-        node->m_parent_edge : node->m_parent_edge->m_rev_edge;
-      CapType nd_flow;
-      CapType delt_flow = std::min(ABS(dst_node->m_excess), flow_edge->m_edge_capacity);
-      nd_flow = std::min(flow_edge->m_edge_capacity, needed_flow) - delt_flow;
-      assert(nd_flow <= *res_flow);
-      CapType push_flow = 0;
-      if (nd_flow > 0) {
-        PushEnoughFlowToNode(dst_node, nd_flow, res_flow);
-        push_flow = dst_node->m_excess;
-        assert(push_flow <= needed_flow);
-      } else {
-        push_flow = std::min(flow_edge->m_edge_capacity, needed_flow);
-        (*res_flow) -= push_flow;
-        if (ABS(*res_flow) < EPSILON) {
-          *res_flow = 0;
-        }
-      }
-      PushFlow(dst_node, node, flow_edge, push_flow);
-      needed_flow -= push_flow;
-      if (node->m_parent_edge && !flow_edge->m_edge_capacity) {
-        assert(needed_flow > 0);
-        node->m_parent_edge = ORPHAN;
-      } else if (node->m_parent_edge) {
-        assert(!needed_flow);
-      }
-      if (!*res_flow) {
-        assert(!needed_flow);
-        return;
-      }
-    } else {
-      return;
-    }
-  }
-}
-#endif
 
 template <class CapType>
 void Graph<CapType>::SetResFlow(Node* node) {
-  node->m_is_allow_recursion = true;
   CapType& res_flow = node->m_node_state == SOURCE ? m_source_res_flow : m_sink_res_flow;
   bool& node_end = node->m_node_state == SOURCE ? m_is_source_end : m_is_sink_end;
   if (node->m_parent_edge == TERMINAL) {
@@ -426,147 +373,112 @@ void Graph<CapType>::SetResFlow(Node* node) {
     if (!res_flow) {
       node_end = true;
     }
-    // enter by once
-    // AddOrphanNode(node);
   }
 }
 
 template <class CapType>
-void Graph<CapType>::PushEnoughFlowToOneNode(std::stack<Node*>* nodes) {
-  // if (node_type == SOURCE) {
-  //   printf("s node = %d, excess = %f, need = %f, res = %f\n", source_node->m_id, source_node->m_excess, source_node->m_needed_flow, m_source_res_flow);
-  // } else {
-  //   printf("sk node = %d, excess = %f, need = %f, res = %f\n", sink_node->m_id, sink_node->m_excess, sink_node->m_needed_flow, m_sink_res_flow);
-  // }
-  bool node_type;
-  while (!nodes->empty()) {
-    Node* tmp = nodes->top();
-    assert(tmp);
-    if (!tmp->m_is_allow_recursion) {
-      // if (tmp->m_excess) {
-      //   SetTerminalNode(tmp);
-      // }
-      nodes->pop();
-    } else {
-      node_type = tmp->m_node_state;
-      break;
-    }
+bool Graph<CapType>::Empty(bool node_type) {
+  Node*& top_node = node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+  if (!top_node) {
+    return true;
   }
-  if (nodes->empty()) {
-    return;
-  }
-  Node*& node = nodes->top();
+  return false;
+}
+
+template <class CapType>
+void Graph<CapType>::Push(Node* node) {
+  Node*& top_node = node->m_node_state == SOURCE ? m_top_source_node : m_top_sink_node;
+  node->m_next_node = top_node;
+  top_node = node;
+}
+
+template <class CapType>
+typename Graph<CapType>::Node*& Graph<CapType>::Top(bool node_type) {
+  return node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+}
+
+template <class CapType>
+void Graph<CapType>::Pop(bool node_type) {
+  Node*& top_node = node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+  assert(top_node);
+  Node* tmp = top_node;
+  top_node = top_node->m_next_node;
+  tmp->m_next_node = NULL;
+}
+
+template <class CapType>
+void Graph<CapType>::PushEnoughFlowToOneNode(bool node_type) {
+  assert(!Empty(node_type));
+  Node*& node = Top(node_type);
   bool& node_end = node_type == SOURCE ? m_is_source_end : m_is_sink_end;
   bool& other_node_end = node_type == SINK ? m_is_source_end : m_is_sink_end;
   CapType& node_res_flow = node_type == SOURCE ? m_source_res_flow : m_sink_res_flow;
-  if (node_end) {
-    if (node->m_child_edge) {
-      CapType push_flow = 0;
-      Node* child_node = node->m_child_edge->m_dst_node;
-      Edge* flow_edge = node_type == SOURCE ? node->m_child_edge : node->m_child_edge->m_rev_edge;
-      if (node_type == SOURCE ? m_source_res_flow < -m_sink_res_flow :
-          m_source_res_flow > -m_sink_res_flow) {
-        push_flow = node->m_excess + (m_sink_res_flow + m_source_res_flow);
-        assert(ABS(push_flow) < ABS(node->m_excess));
-        node_res_flow = node_type == SOURCE ? -m_sink_res_flow : -m_source_res_flow;
-        SetTerminalNode(node);
-      } else {
-        push_flow = node->m_excess;
-      }
-      if (push_flow) {
-        PushFlow(node, child_node, flow_edge, push_flow);
-      }
-      if (child_node->m_parent_edge && !flow_edge->m_edge_capacity) {
-        AddOrphanNode(child_node);
-      }
-      // if (!node->m_excess && node->m_parent_edge == TERMINAL) {
-      //   AddOrphanNode(node);
-      // }
-    }
-    nodes->pop();
-    return;
-  }
+  CapType& other_res_flow = node_type == SINK ? m_source_res_flow : m_sink_res_flow;
 
-  assert(node->m_parent_edge);
-  if (node->m_parent_edge == ORPHAN || node->m_parent_edge == TERMINAL) {
-    AdoptNewPath(&node);
-    if (!node->m_parent_edge) {
-      node_end = true;
+  Node* src_node = node;
+  CapType push_flow = node->m_excess;
+  while (!node_end && node->m_parent_edge && node->m_needed_flow) {
+    if (node->m_parent_edge == ORPHAN || node->m_parent_edge == TERMINAL) {
+      AdoptNewPath(node);
+    }
+    if (node_end || !node->m_parent_edge || !node->m_needed_flow) {
+      break;
+    }
+
+    assert(node->m_needed_flow && node->m_parent_edge);
+    Node* dst_node = node->m_parent_edge->m_dst_node;
+    SetChildEdge(dst_node, node->m_parent_edge->m_rev_edge);
+    Edge* flow_edge = dst_node->m_node_state == SINK ?
+      node->m_parent_edge : node->m_parent_edge->m_rev_edge;
+    assert(flow_edge->m_edge_capacity);
+    CapType dst_nd_flow;
+    CapType delt_flow = std::min(ABS(dst_node->m_excess), flow_edge->m_edge_capacity);
+    dst_nd_flow = std::min(flow_edge->m_edge_capacity, ABS(node->m_needed_flow)) - delt_flow;
+    assert(dst_nd_flow - (node_type == SOURCE ? m_source_res_flow : -m_sink_res_flow) < EPSILON);
+    dst_node->m_needed_flow = node_type == SOURCE ? dst_nd_flow : -dst_nd_flow;
+    if (dst_nd_flow > 0) {
+      SetResFlow(dst_node);
+      Push(dst_node);
+      return;
+    } else {
+      assert(node->m_needed_flow);
+      assert(dst_node->m_parent_edge == TERMINAL);
+      push_flow = std::min(flow_edge->m_edge_capacity, ABS(node->m_needed_flow));
+      if (node_type == SINK) {
+        push_flow = -push_flow;
+      }
+      node_res_flow -= push_flow;
+      Same(node_res_flow, 0);
+      if (!node_res_flow) {
+        node_end = true;
+      }
+      src_node = dst_node;
+    }
+    break;
+  }
+  if (src_node->m_child_edge) {
+    Node* child_node = src_node->m_child_edge->m_dst_node;
+    Edge* flow_edge = node_type == SOURCE ?
+      src_node->m_child_edge : src_node->m_child_edge->m_rev_edge;
+    if (src_node == node && ABS(node_res_flow) < ABS(other_res_flow) && other_node_end) {
+      push_flow = node->m_excess + (m_sink_res_flow + m_source_res_flow);
+      assert(ABS(push_flow) < ABS(node->m_excess));
+      node_res_flow = -other_res_flow;
+      SetTerminalNode(node);
+    }
+    if (push_flow) {
+      PushFlow(src_node, child_node, flow_edge, push_flow);
+    }
+    if (child_node->m_parent_edge && !flow_edge->m_edge_capacity) {
+      AddOrphanNode(child_node);
     }
   }
-  // find next node which needed_flow is not zero
-  while (!node_end && !node->m_needed_flow) {
-    Node* path_node = node;
-    for (; !path_node->m_needed_flow; path_node = path_node->m_child_edge->m_dst_node) {
-      if (!path_node->m_child_edge) {
-        node_end = true;
-        break;
-      }
-      Node* dst_node = path_node->m_child_edge->m_dst_node;
-      Edge* flow_edge = path_node->m_node_state == SOURCE ?
-        path_node->m_child_edge : path_node->m_child_edge->m_rev_edge;
-      PushFlow(path_node, dst_node, flow_edge);
-      assert(!path_node->m_excess);
-      if (!flow_edge->m_edge_capacity) {
-        path_node = dst_node;
-        break;
-      }
-    }
-    if (!node_end) {
-      Edge* flow_edge = path_node->m_node_state == SINK ?
-        path_node->m_parent_edge : path_node->m_parent_edge->m_rev_edge;
-      assert(!flow_edge->m_edge_capacity);
-      node = path_node;
-      AdoptNewPath(&node);
-      if (!node->m_parent_edge) {
-        node_end = true;
-      }
-    }
-  }
-  if (node_end) {
+  if (src_node == node) {
+    Pop(node_type);
+    if (Empty(node_type)) {
       other_node_end = true;
-    return;
-  }
-  assert(node->m_needed_flow && node->m_parent_edge);
-
-  Node* dst_node = node->m_parent_edge->m_dst_node;
-  SetChildEdge(dst_node, node->m_parent_edge->m_rev_edge);
-  Edge* flow_edge = dst_node->m_node_state == SINK ?
-    node->m_parent_edge : node->m_parent_edge->m_rev_edge;
-  assert(flow_edge->m_edge_capacity);
-  CapType dst_nd_flow;
-  CapType delt_flow = std::min(ABS(dst_node->m_excess), flow_edge->m_edge_capacity);
-  dst_nd_flow = std::min(flow_edge->m_edge_capacity, ABS(node->m_needed_flow)) - delt_flow;
-  assert(dst_nd_flow - (node_type == SOURCE ? m_source_res_flow : -m_sink_res_flow) < EPSILON);
-  dst_node->m_needed_flow = node_type == SOURCE ? dst_nd_flow : -dst_nd_flow;
-  CapType push_flow = 0;
-  if (dst_nd_flow > 0) {
-    SetResFlow(dst_node);
-    nodes->push(dst_node);
-    return;
-  } else {
-    assert(node->m_needed_flow);
-    assert(dst_node->m_parent_edge == TERMINAL);
-    push_flow = std::min(flow_edge->m_edge_capacity, ABS(node->m_needed_flow));
-    if (node_type == SINK) {
-      push_flow = -push_flow;
-    }
-    node_res_flow -= push_flow;
-    Same(node_res_flow, 0);
-    if (!node_res_flow) {
-      node_end = true;
     }
   }
-  assert(push_flow);
-  PushFlow(dst_node, node, flow_edge, push_flow);
-  if (node->m_parent_edge && !flow_edge->m_edge_capacity) {
-    assert(!node_end);
-    AddOrphanNode(node);
-  }
-  // if (!dst_node->m_excess && dst_node->m_parent_edge == TERMINAL) {
-  //   assert(!node_end);
-  //   AddOrphanNode(dst_node);
-  // }
 }
 
 // node is current Node
@@ -574,17 +486,19 @@ void Graph<CapType>::PushEnoughFlowToOneNode(std::stack<Node*>* nodes) {
 // res_flow is the total resident flow
 template <class CapType>
 void Graph<CapType>::PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node) {
-  std::stack<Node*> source_nodes;
-  source_nodes.push(source_node);
-  std::stack<Node*> sink_nodes;
-  sink_nodes.push(sink_node);
-  while (!source_nodes.empty() || !sink_nodes.empty()) {
-  // printf("s node = %d, excess = %f, need = %f, res = %f\n", source_node->m_id, source_node->m_excess, source_node->m_needed_flow, m_source_res_flow);
-  // printf("sk node = %d, excess = %f, need = %f, res = %f\n", sink_node->m_id, sink_node->m_excess, sink_node->m_needed_flow, m_sink_res_flow);
-    if (!source_nodes.empty() && (m_source_res_flow > -m_sink_res_flow || sink_nodes.empty())) {
-      PushEnoughFlowToOneNode(&source_nodes);
+  Push(source_node);
+  Push(sink_node);
+  while (!Empty(SOURCE) || !Empty(SINK)) {
+    // if (!source_nodes.empty()) {
+    //   printf("s node = %d, excess = %f, need = %f, res = %f\n", source_nodes.top()->m_id, source_nodes.top()->m_excess, source_nodes.top()->m_needed_flow, m_source_res_flow);
+    // }
+    // if (!sink_nodes.empty()) {
+    //   printf("sk node = %d, excess = %f, need = %f, res = %f\n", sink_nodes.top()->m_id, sink_nodes.top()->m_excess, sink_nodes.top()->m_needed_flow, m_sink_res_flow);
+    // }
+    if (!Empty(SOURCE) && (m_source_res_flow > -m_sink_res_flow || Empty(SINK))) {
+      PushEnoughFlowToOneNode(SOURCE);
     } else {
-      PushEnoughFlowToOneNode(&sink_nodes);
+      PushEnoughFlowToOneNode(SINK);
     }
   }
 }
@@ -611,12 +525,10 @@ void Graph<CapType>::PushEnoughFlow(Node* source_node, Node* sink_node,
   Same(source_node->m_excess, *min_edge_capacity);
   Same(sink_node->m_excess, -*min_edge_capacity);
   Same(source_node->m_excess, -sink_node->m_excess);
-  if (source_node->m_parent_edge == ORPHAN) {
-    assert(source_node->m_excess);
+  if (!source_node->m_parent_edge) {
     SetTerminalNode(source_node);
   }
-  if (sink_node->m_parent_edge == ORPHAN) {
-    assert(sink_node->m_excess);
+  if (!sink_node->m_parent_edge) {
     SetTerminalNode(sink_node);
   }
   *min_edge_capacity = std::min(*min_edge_capacity, source_node->m_excess);
@@ -662,26 +574,22 @@ void Graph<CapType>::Augment(Edge* meet_edge) {
   
   // printf("node0 = %d, excess = %f, node1 = %d, excess = %f, min_capacity = %f\n", flow_nodes[0]->m_id, flow_nodes[0]->m_excess, flow_nodes[1]->m_id, flow_nodes[1]->m_excess, min_capacity);
   PushEnoughFlow(flow_nodes[0], flow_nodes[1], &min_capacity);
-  assert(flow_nodes[0]->m_parent_edge != ORPHAN && flow_nodes[1]->m_parent_edge != ORPHAN);
 
-  assert(flow_nodes[0]->m_parent_edge || flow_nodes[1]->m_parent_edge);
-  if (flow_nodes[0]->m_parent_edge && flow_nodes[1]->m_parent_edge) {
-    assert(min_capacity == old_min);
-  } else if (!flow_nodes[0]->m_parent_edge) {
-    assert(flow_nodes[1]->m_parent_edge);
-    assert(min_capacity == flow_nodes[0]->m_excess);
-    assert(min_capacity < old_min);
-    if (flow_nodes[1]->m_parent_edge == TERMINAL) {
-      assert(flow_nodes[1]->m_excess < -min_capacity);
-    } else {
-      assert(flow_nodes[1]->m_excess == -min_capacity);
-    }
-  } else {
-    assert(flow_nodes[0]->m_parent_edge);
-    assert(min_capacity == -flow_nodes[1]->m_excess);
-    assert(min_capacity < old_min);
-    assert(flow_nodes[0]->m_excess >= min_capacity);
-  }
+  // if (flow_nodes[0]->m_parent_edge && flow_nodes[1]->m_parent_edge) {
+  //   assert(min_capacity == old_min);
+  // } else if (!flow_nodes[0]->m_parent_edge && flow_nodes[1]->m_parent_edge) {
+  //   assert(min_capacity == flow_nodes[0]->m_excess);
+  //   assert(min_capacity < old_min);
+  //   if (flow_nodes[1]->m_parent_edge == TERMINAL) {
+  //     assert(flow_nodes[1]->m_excess < -min_capacity);
+  //   } else {
+  //     assert(flow_nodes[1]->m_excess == -min_capacity);
+  //   }
+  // } else if (!flow_nodes[1]->m_parent_edge && flow_nodes[0]->m_parent_edge) {
+  //   assert(min_capacity == -flow_nodes[1]->m_excess);
+  //   assert(min_capacity < old_min);
+  //   assert(flow_nodes[0]->m_excess >= min_capacity);
+  // }
 
   first_edge[0]->m_edge_capacity += min_capacity;
   first_edge[1]->m_edge_capacity -= min_capacity;
@@ -706,8 +614,7 @@ void Graph<CapType>::Augment(Edge* meet_edge) {
     } else {
       assert(parent_node->m_excess <= 0);
     }
-    if (!parent_node->m_excess &&
-        (!parent_node->m_parent_edge || parent_node->m_parent_edge == TERMINAL)) {
+    if (!parent_node->m_excess) {
       AddOrphanNode(parent_node);
     }
   }
