@@ -8,7 +8,7 @@
 
 #include "include/colour.h"
 
-#define EPSILON 0.0000000001
+#define EPSILON 0.00000001
 typedef unsigned char uchar;
 
 enum Scene {

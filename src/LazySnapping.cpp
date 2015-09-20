@@ -50,6 +50,9 @@ inline double GetColourDistence(double c_mean[3],
       min = diff;
     }
   }
+  if (!min) {
+    min += EPSILON;
+  }
   return min;
 }
 
@@ -157,8 +160,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if B_MAXFLOW
-  GraphType graph(vtx_count, edge_count);
-#elif OPENCV_MAXFLOW
+  GraphType bkgraph(vtx_count, edge_count);
+#endif
+
+#if OPENCV_MAXFLOW
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
 #elif IB_MAXFLOW
@@ -214,9 +219,10 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if B_MAXFLOW
-      graph.add_node();
-      graph.add_tweights(vtx0, e1[0], e1[1]);
-#elif OPENCV_MAXFLOW
+      bkgraph.add_node();
+      bkgraph.add_tweights(vtx0, e1[0], e1[1]);
+#endif
+#if OPENCV_MAXFLOW
       graph.addVtx();
       graph.addTermWeights(index, e1[0], e1[1]);
 #elif IB_MAXFLOW
@@ -249,8 +255,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if B_MAXFLOW
-        graph.add_edge(vtx0, vtx1, e2, e2);
-#elif OPENCV_MAXFLOW
+        bkgraph.add_edge(vtx0, vtx1, e2, e2);
+#endif
+#if OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
@@ -267,8 +274,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if B_MAXFLOW
-        graph.add_edge(vtx0, vtx1, e2, e2);
-#elif OPENCV_MAXFLOW
+        bkgraph.add_edge(vtx0, vtx1, e2, e2);
+#endif
+#if OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
@@ -285,8 +293,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if B_MAXFLOW
-        graph.add_edge(vtx0, vtx1, e2, e2);
-#elif OPENCV_MAXFLOW
+        bkgraph.add_edge(vtx0, vtx1, e2, e2);
+#endif
+#if OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
@@ -303,8 +312,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
 
 #if B_MAXFLOW
-        graph.add_edge(vtx0, vtx1, e2, e2);
-#elif OPENCV_MAXFLOW
+        bkgraph.add_edge(vtx0, vtx1, e2, e2);
+#endif
+#if OPENCV_MAXFLOW
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
@@ -327,10 +337,11 @@ ct.PrintTime();
 
 #if B_MAXFLOW
 ct.ContBegin();
-  graph.maxflow();
+  bkgraph.maxflow();
 ct.ContEnd();
 ct.PrintTime();
-#elif OPENCV_MAXFLOW
+#endif
+#if OPENCV_MAXFLOW
 ct.ContBegin();
   graph.maxFlow();
 ct.ContEnd();
@@ -387,12 +398,13 @@ ct.PrintTime();
 #endif
 
 #if B_MAXFLOW
-        if (graph.what_segment(vtx0) == GraphType::SOURCE) {
+        if (bkgraph.what_segment(vtx0) == GraphType::SOURCE) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
         }
-#elif OPENCV_MAXFLOW
+#endif
+#if OPENCV_MAXFLOW
         if (graph.inSourceSegment(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {

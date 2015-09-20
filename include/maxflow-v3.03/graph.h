@@ -1,7 +1,12 @@
 // #define ENABLE_BFS
 // #define ENABLE_PAR
-#include <assert.h>
+// #define ENABLE_NEWAL
 
+#include <assert.h>
+#include <algorithm>
+#include "include/utils.h"
+
+#define ABS(value) ((value) > 0 ? (value) : -(value))
 /* graph.h */
 /*
     Copyright Vladimir Kolmogorov (vnk@ist.ac.at), Yuri Boykov (yuri@csd.uwo.ca) 
@@ -298,13 +303,16 @@ private:
 		int			is_sink : 1;	// flag showing whether the node is in the source or in the sink tree (if parent!=NULL)
 		int			is_marked : 1;	// set by mark_node()
 		int			is_in_changed_list : 1; // set by maxflow if 
-#ifdef ENABLE_BFS
-    arc     *m_child_edge;
-#endif
 
 		tcaptype	tr_cap;		// if tr_cap > 0 then tr_cap is residual capacity of the arc SOURCE->node
 								// otherwise         -tr_cap is residual capacity of the arc node->SINK 
 
+    arc* m_child_edge;
+    int  m_id;
+#ifdef ENABLE_NEWAL
+    tcaptype m_needed_flow;
+    node* m_next_node;
+#endif
 	};
 
 	struct arc
@@ -350,6 +358,17 @@ private:
   int tree_edges;
   int broken_edges;
 
+#ifdef ENABLE_NEWAL
+  flowtype m_source_res_flow;
+  bool m_is_source_end;
+  flowtype m_sink_res_flow;
+  bool m_is_sink_end;
+  node* m_top_source_node;
+  node* m_top_sink_node;
+  node* m_source_first_node;
+  node* m_sink_first_node;
+#endif
+
 	/////////////////////////////////////////////////////////////////////////
 
 	void reallocate_nodes(int num); // num is the number of new nodes
@@ -368,9 +387,26 @@ private:
 
 	void maxflow_init();             // called if reuse_trees == false
 	void maxflow_reuse_trees_init(); // called if reuse_trees == true
+
+#ifdef ENABLE_NEWAL
+  void AdoptNewPath(node* dst_node);
+  void SetTerminalNode(node* dst_node);
+  void Same(flowtype& dst_val, flowtype comp_val);
+  void PushFlow(node* src_node, node* dst_node, arc* flow_edge, flowtype push_flow_capacity);
+  void SetResFlow(node* node);
+
+  bool Empty(bool node_type);
+  void Push(node* dst_node);
+  node*& Top(bool node_type);
+  void Pop(bool node_type);
+  void PushEnoughFlowToOneNode(bool node_type);
+
+  void PushEnoughFlowToTwoNodes(node* source_node, node* sink_node);
+  void PushEnoughFlow(node* source_node, node* sink_node, flowtype* min_edge_capacity);
+#endif
 	void augment(arc *middle_arc);
-	void process_source_orphan(node *i);
-	void process_sink_orphan(node *i);
+	void process_source_orphan(node *i, bool condition = false);
+	void process_sink_orphan(node *i, bool condition = false);
 
 	void test_consistency(node* current_node=NULL); // debug function
 };
@@ -416,6 +452,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 	else           cap_sink   -= delta;
 	flow += (cap_source < cap_sink) ? cap_source : cap_sink;
 	nodes[i].tr_cap = cap_source - cap_sink;
+  nodes[i].m_id = i;
 }
 
 template <typename captype, typename tcaptype, typename flowtype> 
@@ -778,6 +815,16 @@ template <typename captype, typename tcaptype, typename flowtype>
 	orphan_first = NULL;
 
 	TIME = 0;
+#ifdef ENABLE_NEWAL
+  flowtype m_source_res_flow = 0;
+  bool m_is_source_end = false;
+  flowtype m_sink_res_flow = 0;
+  bool m_is_sink_end = false;
+  m_top_source_node = NULL;
+  m_top_sink_node = NULL;
+  m_source_first_node = NULL;
+  m_sink_first_node = NULL;
+#endif
 
 	for (i=nodes; i<node_last; i++)
 	{
@@ -785,6 +832,11 @@ template <typename captype, typename tcaptype, typename flowtype>
 		i -> is_marked = 0;
 		i -> is_in_changed_list = 0;
 		i -> TS = TIME;
+    i -> m_child_edge = NULL;
+#ifdef ENABLE_NEWAL
+    i -> m_needed_flow = 0;
+    i -> m_next_node = NULL;
+#endif
 		if (i->tr_cap > 0)
 		{
 			/* i is connected to the source */
@@ -893,6 +945,255 @@ template <typename captype, typename tcaptype, typename flowtype>
 	//test_consistency();
 }
 
+#ifdef ENABLE_NEWAL
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::AdoptNewPath(node* dst_node) {
+  set_orphan_front(dst_node);
+  /* adoption */
+	nodeptr *np, *np_next;
+  node* i = NULL;
+  while ((np=orphan_first))
+  {
+    np_next = np -> next;
+    np -> next = NULL;
+
+    while ((np=orphan_first))
+    {
+      orphan_first = np -> next;
+      i = np -> ptr;
+      nodeptr_block -> Delete(np);
+      if (!orphan_first) orphan_last = NULL;
+      if (i->parent == ORPHAN) {
+        if (i->is_sink) process_sink_orphan(i, true);
+        else            process_source_orphan(i, true);
+      }
+    }
+
+    orphan_first = np_next;
+  }
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::SetTerminalNode(node* dst_node) {
+  dst_node->parent = TERMINAL;
+  dst_node->DIST = 1;
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::Same(flowtype& dst_val, flowtype comp_val) {
+  if (ABS(dst_val- comp_val) < EPSILON) {
+    dst_val = comp_val;
+  }
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::
+  PushFlow(node* src_node, node* dst_node, arc* flow_edge, flowtype push_flow_capacity) {
+  flowtype flow = std::min(ABS(src_node->tr_cap), flow_edge->r_cap);
+  flow = std::min(flow, ABS(push_flow_capacity));
+
+  // assert(src_node->is_sink == dst_node->is_sink);
+  src_node->tr_cap -= src_node->is_sink == SOURCE ? flow : -flow;
+  Same(src_node->tr_cap, 0);
+
+  dst_node->tr_cap += src_node->is_sink == SOURCE ? flow : -flow;
+  flow_edge->r_cap -= flow;
+  Same(flow_edge->r_cap, 0);
+
+  flow_edge->sister->r_cap += flow;
+  dst_node->m_needed_flow -= dst_node->is_sink == SOURCE ? flow : -flow;
+  Same(dst_node->m_needed_flow, 0);
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::SetResFlow(node* dst_node) {
+  flowtype& res_flow = dst_node->is_sink == SOURCE ? m_source_res_flow : m_sink_res_flow;
+  bool& node_end = dst_node->is_sink == SOURCE ? m_is_source_end : m_is_sink_end;
+  if (dst_node->parent == TERMINAL) {
+    res_flow -= dst_node->tr_cap;
+    Same(res_flow, 0);
+    if (dst_node->is_sink == SOURCE) {
+      res_flow = res_flow > 0 ? res_flow : 0;
+    } else {
+      res_flow = res_flow < 0 ? res_flow : 0;
+    }
+    if (!res_flow) {
+      node_end = true;
+    }
+  }
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+bool Graph<captype,tcaptype,flowtype>::Empty(bool node_type) {
+  node*& top_node = node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+  if (!top_node) {
+    return true;
+  }
+  return false;
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::Push(node* dst_node) {
+  node*& top_node = dst_node->is_sink == SOURCE ? m_top_source_node : m_top_sink_node;
+  dst_node->m_next_node = top_node;
+  top_node = dst_node;
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+typename Graph<captype,tcaptype,flowtype>::node*& Graph<captype,tcaptype,flowtype>::Top(bool node_type) {
+  return node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::Pop(bool node_type) {
+  node*& top_node = node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+  // assert(top_node);
+  node* tmp = top_node;
+  top_node = top_node->m_next_node;
+  tmp->m_next_node = NULL;
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::PushEnoughFlowToOneNode(bool node_type) {
+  // assert(!Empty(node_type));
+  node*& node_ = Top(node_type);
+  bool& node_end = node_type == SOURCE ? m_is_source_end : m_is_sink_end;
+  bool& other_node_end = node_type == SINK ? m_is_source_end : m_is_sink_end;
+  flowtype& node_res_flow = node_type == SOURCE ? m_source_res_flow : m_sink_res_flow;
+  flowtype& other_res_flow = node_type == SINK ? m_source_res_flow : m_sink_res_flow;
+
+  node* src_node = node_;
+  flowtype push_flow = node_->tr_cap;
+  while (!node_end && node_->parent && node_->m_needed_flow) {
+    if (node_->parent == ORPHAN || node_->parent == TERMINAL) {
+      AdoptNewPath(node_);
+    }
+    if (node_end || !node_->parent || !node_->m_needed_flow) {
+      break;
+    }
+
+    // assert(node_->m_needed_flow && node_->parent);
+    node* dst_node = node_->parent->head;
+    dst_node->m_child_edge = node_->parent->sister;
+    arc* flow_edge = node_type == SINK ?
+      node_->parent : node_->parent->sister;
+    // assert(flow_edge->r_cap);
+    flowtype dst_nd_flow;
+    flowtype delt_flow = std::min(ABS(dst_node->tr_cap), flow_edge->r_cap);
+    dst_nd_flow = std::min(flow_edge->r_cap, ABS(node_->m_needed_flow)) - delt_flow;
+    // assert(dst_nd_flow - ABS(node_res_flow) < EPSILON);
+    dst_node->m_needed_flow = node_type == SOURCE ? dst_nd_flow : -dst_nd_flow;
+    if (dst_nd_flow > 0) {
+      SetResFlow(dst_node);
+      Push(dst_node);
+      return;
+    } else {
+      // assert(node_->m_needed_flow);
+      // assert(dst_node->parent == TERMINAL);
+      push_flow = std::min(flow_edge->r_cap, ABS(node_->m_needed_flow));
+      if (node_type == SINK) {
+        push_flow = -push_flow;
+      }
+      node_res_flow -= push_flow;
+      Same(node_res_flow, 0);
+      if (!node_res_flow) {
+        node_end = true;
+      }
+      src_node = dst_node;
+    }
+    break;
+  }
+  if (src_node->m_child_edge) {
+    node* child_node = src_node->m_child_edge->head;
+    arc* flow_edge = node_type == SOURCE ?
+      src_node->m_child_edge : src_node->m_child_edge->sister;
+    // if (src_node == node_ && ABS(node_res_flow) < ABS(other_res_flow) && other_node_end) {
+    //   push_flow = node_->tr_cap + (m_sink_res_flow + m_source_res_flow);
+    //   // assert(ABS(push_flow) < ABS(node_->tr_cap));
+    //   node_res_flow = -other_res_flow;
+    //   SetTerminalNode(node_);
+    // }
+    if (push_flow) {
+      PushFlow(src_node, child_node, flow_edge, push_flow);
+    }
+    if (child_node->parent && !flow_edge->r_cap) {
+      set_orphan_front(child_node);
+    }
+  }
+  if (src_node == node_) {
+    Pop(node_type);
+    if (Empty(node_type)) {
+      other_node_end = true;
+    }
+  }
+}
+
+// node is current node
+// needed_flow is except the excess of the node what the node need in flow.
+// res_flow is the total resident flow
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::PushEnoughFlowToTwoNodes(node* source_node, node* sink_node) {
+  Push(source_node);
+  Push(sink_node);
+  m_source_first_node = source_node;
+  m_sink_first_node = sink_node;
+  while (!Empty(SOURCE) || !Empty(SINK)) {
+    // if (!Empty(SOURCE)) {
+    //   printf("s node = %d, excess = %f, need = %f, res = %f\n", Top(SOURCE)->m_id, Top(SOURCE)->tr_cap, Top(SOURCE)->m_needed_flow, m_source_res_flow);
+    // }
+    // if (!Empty(SINK)) {
+    //   printf("sk node = %d, excess = %f, need = %f, res = %f\n", Top(SINK)->m_id, Top(SINK)->tr_cap, Top(SINK)->m_needed_flow, m_sink_res_flow);
+    // }
+    if (!Empty(SOURCE) && (m_source_res_flow > -m_sink_res_flow || Empty(SINK))) {
+      PushEnoughFlowToOneNode(SOURCE);
+    } else {
+      PushEnoughFlowToOneNode(SINK);
+    }
+  }
+}
+
+template <typename captype, typename tcaptype, typename flowtype> 
+void Graph<captype,tcaptype,flowtype>::PushEnoughFlow(
+  node* source_node, node* sink_node, flowtype* min_edge_capacity) {
+  m_source_res_flow = *min_edge_capacity;
+  m_sink_res_flow = -*min_edge_capacity;
+  m_is_source_end = false;
+  m_is_sink_end = false;
+  source_node->m_needed_flow = m_source_res_flow - source_node->tr_cap > 0 ?
+    m_source_res_flow - source_node->tr_cap : 0;
+  sink_node->m_needed_flow = m_sink_res_flow - sink_node->tr_cap < 0 ?
+    m_sink_res_flow - sink_node->tr_cap : 0;
+  source_node->m_child_edge = NULL;
+  sink_node->m_child_edge = NULL;
+  SetResFlow(source_node);
+  SetResFlow(sink_node);
+
+  PushEnoughFlowToTwoNodes(source_node, sink_node);
+
+  Same(source_node->tr_cap, *min_edge_capacity);
+  Same(sink_node->tr_cap, -*min_edge_capacity);
+  Same(source_node->tr_cap, -sink_node->tr_cap);
+  if (!source_node->parent) {
+    SetTerminalNode(source_node);
+  }
+  if (!sink_node->parent) {
+    SetTerminalNode(sink_node);
+  }
+  *min_edge_capacity = std::min(*min_edge_capacity, source_node->tr_cap);
+  *min_edge_capacity = std::min(*min_edge_capacity, -sink_node->tr_cap);
+  if (source_node->parent && source_node->parent != TERMINAL &&
+      source_node->tr_cap > *min_edge_capacity) {
+    // // assert(source_node->parent->head->parent == TERMINAL);
+    SetTerminalNode(source_node);
+  }
+  if (sink_node->parent && sink_node->parent != TERMINAL &&
+      sink_node->tr_cap < -*min_edge_capacity) {
+    // // assert(sink_node->parent->head->parent == TERMINAL);
+    SetTerminalNode(sink_node);
+  }
+}
+#endif
+
 template <typename captype, typename tcaptype, typename flowtype> 
 	void Graph<captype,tcaptype,flowtype>::augment(arc *middle_arc)
 {
@@ -904,6 +1205,9 @@ template <typename captype, typename tcaptype, typename flowtype>
 	/* 1. Finding bottleneck capacity */
 	/* 1a - the source tree */
 	bottleneck = middle_arc -> r_cap;
+#ifdef ENABLE_NEWAL
+  node* flow_nodes[2];
+#endif
 #ifdef ENABLE_BFS
   middle_arc->sister->head->m_child_edge = NULL;
 #endif
@@ -917,7 +1221,11 @@ template <typename captype, typename tcaptype, typename flowtype>
 #endif
 		if (bottleneck > a->sister->r_cap) bottleneck = a -> sister -> r_cap;
 	}
+#ifndef ENABLE_NEWAL
 	if (bottleneck > i->tr_cap) bottleneck = i -> tr_cap;
+#else
+  flow_nodes[0] = i;
+#endif
 	/* 1b - the sink tree */
 #ifdef ENABLE_BFS
   middle_arc->head->m_child_edge = NULL;
@@ -932,8 +1240,16 @@ template <typename captype, typename tcaptype, typename flowtype>
 #endif
 		if (bottleneck > a->r_cap) bottleneck = a -> r_cap;
 	}
+#ifndef ENABLE_NEWAL
 	if (bottleneck > - i->tr_cap) bottleneck = - i -> tr_cap;
+#else
+  flow_nodes[1] = i;
+#endif
 
+#ifdef ENABLE_NEWAL
+  // printf("node0 = %d, excess = %f, node1 = %d, excess = %f, min_capacity = %f\n", flow_nodes[0]->m_id, flow_nodes[0]->tr_cap, flow_nodes[1]->m_id, flow_nodes[1]->tr_cap, bottleneck);
+  PushEnoughFlow(flow_nodes[0], flow_nodes[1], &bottleneck);
+#endif
 
 	/* 2. Augmenting */
 	/* 2a - the source tree */
@@ -942,7 +1258,11 @@ template <typename captype, typename tcaptype, typename flowtype>
 	for (i=middle_arc->sister->head; ; i=a->head)
 	{
 		a = i -> parent;
+#ifndef ENABLE_NEWAL
 		if (a == TERMINAL) break;
+#else
+    if (i == flow_nodes[0]) break;
+#endif
 		a -> r_cap += bottleneck;
 		a -> sister -> r_cap -= bottleneck;
 		if (!a->sister->r_cap)
@@ -960,7 +1280,11 @@ template <typename captype, typename tcaptype, typename flowtype>
 	for (i=middle_arc->head; ; i=a->head)
 	{
 		a = i -> parent;
+#ifndef ENABLE_NEWAL
 		if (a == TERMINAL) break;
+#else
+    if (i == flow_nodes[1]) break;
+#endif
 		a -> sister -> r_cap += bottleneck;
 		a -> r_cap -= bottleneck;
 		if (!a->r_cap)
@@ -982,13 +1306,14 @@ template <typename captype, typename tcaptype, typename flowtype>
 /***********************************************************************/
 
 template <typename captype, typename tcaptype, typename flowtype> 
-	void Graph<captype,tcaptype,flowtype>::process_source_orphan(node *i)
+	void Graph<captype,tcaptype,flowtype>::process_source_orphan(node *i, bool condition)
 {
 	node *j;
 	arc *a0, *a0_min = NULL, *a;
 	int d, d_min = INFINITE_D;
 
 	/* trying to find a new parent */
+  TIME ++;
 	for (a0=i->first; a0; a0=a0->next)
 	if (a0->sister->r_cap)
 	{
@@ -1012,7 +1337,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 					j -> DIST = 1;
 					break;
 				}
-				if (a==ORPHAN) { d = INFINITE_D; break; }
+				if (a==ORPHAN || !a) { d = INFINITE_D; break; }
 				j = a -> head;
 			}
 			if (d<INFINITE_D) /* j originates from the source - done */
@@ -1049,6 +1374,18 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 	else
 	{
+#ifdef ENABLE_NEWAL
+    if (condition) {
+      if (i == m_source_first_node || i == m_sink_first_node) {
+        if (i->is_sink == SOURCE) {
+          m_is_source_end = true;
+        } else {
+          m_is_sink_end = true;
+        }
+        return;
+      }
+    }
+#endif
 		/* no parent is found */
 		add_to_changed_list(i);
 
@@ -1070,13 +1407,14 @@ template <typename captype, typename tcaptype, typename flowtype>
 }
 
 template <typename captype, typename tcaptype, typename flowtype> 
-	void Graph<captype,tcaptype,flowtype>::process_sink_orphan(node *i)
+	void Graph<captype,tcaptype,flowtype>::process_sink_orphan(node *i, bool condition)
 {
 	node *j;
 	arc *a0, *a0_min = NULL, *a;
 	int d, d_min = INFINITE_D;
 
 	/* trying to find a new parent */
+  TIME ++;
 	for (a0=i->first; a0; a0=a0->next)
 	if (a0->r_cap)
 	{
@@ -1100,7 +1438,7 @@ template <typename captype, typename tcaptype, typename flowtype>
 					j -> DIST = 1;
 					break;
 				}
-				if (a==ORPHAN) { d = INFINITE_D; break; }
+				if (a==ORPHAN || !a) { d = INFINITE_D; break; }
 				j = a -> head;
 			}
 			if (d<INFINITE_D) /* j originates from the sink - done */
@@ -1137,6 +1475,18 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 	else
 	{
+#ifdef ENABLE_NEWAL
+    if (condition) {
+      if (i == m_source_first_node || i == m_sink_first_node) {
+        if (i->is_sink == SOURCE) {
+          m_is_source_end = true;
+        } else {
+          m_is_sink_end = true;
+        }
+        return;
+      }
+    }
+#endif
 		/* no parent is found */
 		add_to_changed_list(i);
 
@@ -1256,8 +1606,6 @@ template <typename captype, typename tcaptype, typename flowtype>
 			}
 		}
 
-		TIME ++;
-
 		if (a)
 		{
 #ifdef ENABLE_PAR
@@ -1282,8 +1630,10 @@ template <typename captype, typename tcaptype, typename flowtype>
 					i = np -> ptr;
 					nodeptr_block -> Delete(np);
 					if (!orphan_first) orphan_last = NULL;
-					if (i->is_sink) process_sink_orphan(i);
-					else            process_source_orphan(i);
+          if (i->parent == ORPHAN) {
+            if (i->is_sink) process_sink_orphan(i);
+            else            process_source_orphan(i);
+          }
 				}
 
 				orphan_first = np_next;
@@ -1311,8 +1661,8 @@ template <typename captype, typename tcaptype, typename flowtype>
 	}
 
 	maxflow_iteration ++;
-  printf("path = %d, tree_edges = %d, broken_edges = %d, m_edges_num = %d, flow = %f\n",
-         path, tree_edges, broken_edges, m_edges_num, flow);
+  // printf("path = %d, tree_edges = %d, broken_edges = %d, m_edges_num = %d, flow = %f\n",
+  //        path, tree_edges, broken_edges, m_edges_num, flow);
   // printf("Boykov m_edges_num = %d\n", m_edges_num);
 	return flow;
 }
