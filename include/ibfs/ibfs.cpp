@@ -431,6 +431,6 @@ double IBFSGraph::computeMaxFlow() {
       dirS=true;
     }
   }
-  printf("flow = %f\n", m_flow);
+  // printf("flow = %f\n", m_flow);
   return m_flow;
 }

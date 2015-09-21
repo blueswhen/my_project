@@ -13,9 +13,6 @@
 #define TERMINAL reinterpret_cast<Edge*>(1)
 #define ORPHAN reinterpret_cast<Edge*>(2)
 #define INIFINITE_DIST INT_MAX
-#define EPSILON 0.00000001
-
-#define ABS(value) ((value) > 0 ? (value) : -(value))
 
 // #define ENABLE_BFS
 // #define ENABLE_PAR

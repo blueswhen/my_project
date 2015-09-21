@@ -6,7 +6,6 @@
 #include <algorithm>
 #include "include/utils.h"
 
-#define ABS(value) ((value) > 0 ? (value) : -(value))
 /* graph.h */
 /*
     Copyright Vladimir Kolmogorov (vnk@ist.ac.at), Yuri Boykov (yuri@csd.uwo.ca) 

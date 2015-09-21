@@ -27,6 +27,8 @@ enum Direction {
   RIGHT = 6,
 };
 
+#define ABS(value) ((value) > 0 ? (value) : -(value))
+
 #define EIGHT_ARROUND_POSITION(center_x, center_y, width, height) \
 { \
   center_y * width + std::min(center_x + 1, width - 1), \

@@ -524,7 +524,7 @@ void FGraph<CapType, EdgePunishFun>::MaxFlow() {
                        meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
       // AddActiveNodeBack(at_node);
       if (new_length > origion_length) {
-        AddActiveNodeBack(at_node);
+        AddActiveNodeMid(at_node);
       } else {
         AddActiveNodeFront(at_node);
       }
