@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <assert.h>
 #include <limits.h>
+#include "include/utils.h"
 
 #define TERMINAL reinterpret_cast<Edge*>(1)
 #define ORPHAN reinterpret_cast<Edge*>(2)

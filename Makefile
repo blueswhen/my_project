@@ -3,7 +3,7 @@
 CXX = g++
 LIBS = -lopencv_core -lopencv_highgui -lopencv_imgproc
 INCS = -I. -std=c++11 -pthread
-CXXFLAGS = -O3
+CXXFLAGS = -O4
 
 lazysnapping : \
   include/utils.h \
