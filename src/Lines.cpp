@@ -78,6 +78,11 @@ Lines::Lines()
   , m_sub_line_restart(false)
   , m_bck_line_restart(false) {}
 
+Lines::Lines(const char* file_name)
+  : UserInput(file_name)
+  , m_sub_line_restart(false)
+  , m_bck_line_restart(false) {}
+
 Lines::Lines(Lines* half_scale_lines)
   : UserInput(half_scale_lines)
   , m_sub_line_restart(false)
@@ -136,8 +141,10 @@ void Lines::DrawSubjectFinish(int x, int y) {
   int width = image->GetWidth();
   int height = image->GetHeight();
   FILE* file;
-  file = fopen("line_points.txt", "w");
+  std::string txt_name = m_file_name + ".txt";
+  file = fopen(txt_name.c_str(), "w");
   assert(file);
+  fprintf(file, "ln\n");
   for (int i = 0; i < m_sub_mark_index.size(); ++i) {
     m_sub_mark_value.push_back(GET_PIXEL(image, m_sub_mark_index[i]));
     int xy[2] = GET_XY(m_sub_mark_index[i], width);

@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <stdlib.h>
+#include <string>
 
 class SegmentationData;
 
@@ -21,6 +22,7 @@ class UserInput {
   virtual void DrawBackgroundFinish(int x, int y) {}
 
   UserInput();
+  UserInput(const char* file_name);
   UserInput(UserInput* hlf_uip);
   void Reset();
   virtual ~UserInput() {}
@@ -28,6 +30,7 @@ class UserInput {
   UserInput* GetHalfScaleUserInput();
   std::pair<std::vector<int>*, std::vector<int>* > GetSubjectPoints();
   std::pair<std::vector<int>*, std::vector<int>* > GetBackgroundPoints();
+  std::string GetImageName();
 
  protected:
   SegmentationData* m_sd;
@@ -36,6 +39,7 @@ class UserInput {
   std::vector<int> m_bck_mark_index;
   std::vector<int> m_bck_mark_value;
   UserInput* m_hlf_uip;
+  std::string m_file_name;
 };
 
 #endif  // INCLUDE_USER_INPUT_H_

@@ -26,10 +26,6 @@
 #define NEIGHBOUR 8
 #define HALF_NEIGHBOUR_ARR_INDEX FOUR_ARR_INDEX
 #define NEIGHBOUR_ARR_INDEX EIGHT_ARR_INDEX
-#define R_MAX 1 
-
-// #define ENABLE_BFS
-// #define ENABLE_PAR
 
 const double ifgraph_div_sqrt2 = 1 / sqrt(2.0f);
 
@@ -77,7 +73,6 @@ class IFGraph {
     // the timestamp of the latest dist calculating 
     int m_timestamp;
     int m_terminal_dist;
-    int m_depth;
     bool m_is_active;
     bool m_is_gotten_all_edges;
     Edge m_out_edges[NEIGHBOUR];
@@ -175,7 +170,8 @@ class IFGraph {
   void AdoptNewPath(Node* node);
   void SetTerminalNode(Node* node);
   void Same(CapType& dst_val, CapType comp_val);
-  void PushFlow(Node* src_node, Node* dst_node, Edge* flow_edge, CapType push_flow_capacity);
+  void PushFlow(Node* src_node, Node* dst_node, Edge* flow_edge,
+                CapType push_flow_capacity = INT_MAX);
   void SetResFlow(Node* node);
 
   bool Empty(bool node_type);
@@ -188,7 +184,7 @@ class IFGraph {
   void PushEnoughFlow(Node* source_node, Node* sink_node, CapType* min_edge_capacity);
 
   void Augment(Edge* meet_edge);
-  void FindNewPath(Node* orphan_node, int r_max = 0);
+  void FindNewPath(Node* orphan_node);
   void CreateOutEdges(Node* cen_node);
   Edge* GetEdge(Node* src_node, Node* dst_node);
   Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor);
@@ -253,7 +249,6 @@ void IFGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capaci
   node->m_child_edge = NULL;
   node->m_timestamp = 0;
   node->m_terminal_dist = 1;
-  node->m_depth = 1;
   node->m_is_active = false;
   node->m_is_gotten_all_edges = false;
   node->m_out_edges_num = 0;
@@ -336,63 +331,54 @@ void IFGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
 }
 
 template <class CapType, class EdgePunishFun>
-void IFGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node, int r_max) {
+void IFGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
   m_global_timestamp++;
   int dist_min = INIFINITE_DIST;
   CapType max_node_cap = 0;
   Edge* connected_edge_min = NULL;
 
   CreateOutEdges(orphan_node);
-  if (!r_max || orphan_node->m_depth <= r_max) {
-    for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
-      Edge* connected_edge = &orphan_node->m_out_edges[i];
-      if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
-        CapType capacity = orphan_node->m_node_state == SINK ?
-                           connected_edge->m_edge_capacity :
-                           connected_edge->m_rev_edge->m_edge_capacity;
-        if (!capacity) {
-          continue;
-        }
-        Node* dst_node = connected_edge->m_dst_node;
-        Edge* parent_edge = dst_node->m_parent_edge;
-        if (parent_edge) {
-          int dist = 0;
-          // CapType node_cap = 0;
-          while (true) {
-            if (dst_node->m_timestamp == m_global_timestamp) {
-              dist += dst_node->m_terminal_dist;
-              break;
-            }
-            parent_edge = dst_node->m_parent_edge;
-            dist++;
-            if (parent_edge == TERMINAL) {
-              dst_node->m_timestamp = m_global_timestamp;
-              dst_node->m_terminal_dist = 1;
-              // node_cap = dst_node->m_excess > 0 ?
-              //   dst_node->m_excess : -dst_node->m_excess;
-              break;
-            }
-            if (parent_edge == ORPHAN || !parent_edge) {
-              dist = INIFINITE_DIST;
-              break;
-            }
-            dst_node = parent_edge->m_dst_node;
+  for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+    Edge* connected_edge = &orphan_node->m_out_edges[i];
+    if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
+      CapType capacity = orphan_node->m_node_state == SINK ?
+                         connected_edge->m_edge_capacity :
+                         connected_edge->m_rev_edge->m_edge_capacity;
+      if (!capacity) {
+        continue;
+      }
+      Node* dst_node = connected_edge->m_dst_node;
+      Edge* parent_edge = dst_node->m_parent_edge;
+      if (parent_edge) {
+        int dist = 0;
+        while (true) {
+          if (dst_node->m_timestamp == m_global_timestamp) {
+            dist += dst_node->m_terminal_dist;
+            break;
           }
-          if (dist < INIFINITE_DIST && (!r_max || dist <= r_max)) {
-            if (dist < dist_min) {
-              connected_edge_min = connected_edge;
-              dist_min = dist;
-              // max_node_cap = node_cap;
-              // if (dist_min == 1) {
-              //   break;
-              // }
-            }
-            for (dst_node = connected_edge->m_dst_node;
-                 dst_node->m_timestamp != m_global_timestamp;
-                 dst_node = dst_node->m_parent_edge->m_dst_node) {
-              dst_node->m_timestamp = m_global_timestamp;
-              dst_node->m_terminal_dist = dist--;
-            }
+          parent_edge = dst_node->m_parent_edge;
+          dist++;
+          if (parent_edge == TERMINAL) {
+            dst_node->m_timestamp = m_global_timestamp;
+            dst_node->m_terminal_dist = 1;
+            break;
+          }
+          if (parent_edge == ORPHAN || !parent_edge) {
+            dist = INIFINITE_DIST;
+            break;
+          }
+          dst_node = parent_edge->m_dst_node;
+        }
+        if (dist < INIFINITE_DIST) {
+          if (dist < dist_min) {
+            connected_edge_min = connected_edge;
+            dist_min = dist;
+          }
+          for (dst_node = connected_edge->m_dst_node;
+               dst_node->m_timestamp != m_global_timestamp;
+               dst_node = dst_node->m_parent_edge->m_dst_node) {
+            dst_node->m_timestamp = m_global_timestamp;
+            dst_node->m_terminal_dist = dist--;
           }
         }
       }
@@ -467,17 +453,18 @@ void IFGraph<CapType, EdgePunishFun>::AdoptNewPath(Node* node) {
     if (!orphan_node) {
       break;
     }
-    FindNewPath(orphan_node, R_MAX);
-    if (!orphan_node->m_parent_edge) {
-      if (orphan_node == m_source_first_node || orphan_node == m_sink_first_node) {
+    if (orphan_node == m_source_first_node || orphan_node == m_sink_first_node) {
+      FindNewPath(orphan_node);
+      if (!orphan_node->m_parent_edge) {
         if (orphan_node->m_node_state == SOURCE) {
           m_is_source_end = true;
         } else {
           m_is_sink_end = true;
         }
-      } else {
-        FindNewOrphans(orphan_node);
       }
+    } else {
+      orphan_node->m_parent_edge = NULL;
+      FindNewOrphans(orphan_node);
     }
   }
 }
@@ -549,14 +536,6 @@ void IFGraph<CapType, EdgePunishFun>::PushEnoughFlowToOneNode(bool node_type) {
     if (node_end || !node->m_parent_edge || !node->m_needed_flow) {
       break;
     }
-    // if (node->m_child_edge) {
-    //   Node* child_node = node->m_child_edge->m_dst_node;
-    //   if (child_node->m_parent_edge == node->m_child_edge->m_rev_edge &&
-    //       child_node->m_terminal_dist <= node->m_terminal_dist) {
-    //     AddOrphanNode(child_node);
-    //     break;
-    //   }
-    // }
 
     assert(node->m_needed_flow && node->m_parent_edge);
     Node* dst_node = node->m_parent_edge->m_dst_node;
@@ -569,7 +548,6 @@ void IFGraph<CapType, EdgePunishFun>::PushEnoughFlowToOneNode(bool node_type) {
     dst_nd_flow = std::min(flow_edge->m_edge_capacity, ABS(node->m_needed_flow)) - delt_flow;
     assert(dst_nd_flow - ABS(node_res_flow) < EPSILON);
     dst_node->m_needed_flow = node_type == SOURCE ? dst_nd_flow : -dst_nd_flow;
-    dst_node->m_depth = node->m_depth + 1;
     if (dst_nd_flow > 0) {
       SetResFlow(dst_node);
       Push(dst_node);
@@ -594,12 +572,6 @@ void IFGraph<CapType, EdgePunishFun>::PushEnoughFlowToOneNode(bool node_type) {
     Node* child_node = src_node->m_child_edge->m_dst_node;
     Edge* flow_edge = node_type == SOURCE ?
       src_node->m_child_edge : src_node->m_child_edge->m_rev_edge;
-    // if (src_node == node && ABS(node_res_flow) < ABS(other_res_flow) && other_node_end) {
-    //   push_flow = node->m_excess + (m_sink_res_flow + m_source_res_flow);
-    //   assert(ABS(push_flow) < ABS(node->m_excess));
-    //   node_res_flow = -other_res_flow;
-    //   SetTerminalNode(node);
-    // }
     if (push_flow) {
       PushFlow(src_node, child_node, flow_edge, push_flow);
     }
@@ -625,12 +597,6 @@ void IFGraph<CapType, EdgePunishFun>::PushEnoughFlowToTwoNodes(Node* source_node
   m_source_first_node = source_node;
   m_sink_first_node = sink_node;
   while (!Empty(SOURCE) || !Empty(SINK)) {
-    // if (!source_nodes.empty()) {
-    //   printf("s node = %d, excess = %f, need = %f, res = %f\n", source_nodes.top()->m_id, source_nodes.top()->m_excess, source_nodes.top()->m_needed_flow, m_source_res_flow);
-    // }
-    // if (!sink_nodes.empty()) {
-    //   printf("sk node = %d, excess = %f, need = %f, res = %f\n", sink_nodes.top()->m_id, sink_nodes.top()->m_excess, sink_nodes.top()->m_needed_flow, m_sink_res_flow);
-    // }
     if (!Empty(SOURCE) && (m_source_res_flow > -m_sink_res_flow || Empty(SINK))) {
       PushEnoughFlowToOneNode(SOURCE);
     } else {
@@ -654,8 +620,6 @@ void IFGraph<CapType, EdgePunishFun>::PushEnoughFlow(
   sink_node->m_child_edge = NULL;
   SetResFlow(source_node);
   SetResFlow(sink_node);
-  source_node->m_depth = 1;
-  sink_node->m_depth = 1;
 
   PushEnoughFlowToTwoNodes(source_node, sink_node);
 
@@ -685,22 +649,16 @@ void IFGraph<CapType, EdgePunishFun>::PushEnoughFlow(
 template <class CapType, class EdgePunishFun>
 void IFGraph<CapType, EdgePunishFun>::Augment(Edge* meet_edge) {
   Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
-	CapType min_capacity = meet_edge -> m_edge_capacity;
+	CapType min_capacity = meet_edge->m_edge_capacity;
   // first_edge[0] for source tree and first_edge[1] for sink tree
   // find min capacity from path
   Node* flow_nodes[2];
   for (int i = 0; i < 2; ++i) {
     Node* parent_node = first_edge[i]->m_dst_node;
-#ifdef ENABLE_BFS
-    parent_node->m_child_edge = NULL;
-#endif
     for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
          parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
       assert(parent_edge);
       m_path++;
-#ifdef ENABLE_BFS
-      parent_edge->m_dst_node->m_child_edge = parent_edge->m_rev_edge;
-#endif
       Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
       CapType cap = edge->m_edge_capacity;
       if (cap < min_capacity) {
@@ -710,7 +668,30 @@ void IFGraph<CapType, EdgePunishFun>::Augment(Edge* meet_edge) {
     flow_nodes[i] = parent_node;
   }
 
+#if 0
+  for (int k = 0; k < 2; k++) {
+    if (ABS(flow_nodes[k]->m_excess) < min_capacity) {
+      for (int i = 0; i < flow_nodes[k]->m_out_edges_num; ++i) {
+        Edge* connected_edge = &flow_nodes[k]->m_out_edges[i];
+        Edge* flow_edge = flow_nodes[k]->m_node_state == SOURCE ?
+          connected_edge->m_rev_edge : connected_edge;
+        Node* dst_node = connected_edge->m_dst_node;
+        if (dst_node->m_excess && flow_edge->m_edge_capacity &&
+            dst_node->m_node_state == flow_nodes[k]->m_node_state) {
+          PushFlow(dst_node, flow_nodes[k], flow_edge);
+        }
+        if (!dst_node->m_excess && dst_node->m_node_state == flow_nodes[k]->m_node_state) {
+          AdoptNewPath(dst_node);
+        }
+      }
+      SetTerminalNode(flow_nodes[k]);
+    }
+  }
+  min_capacity = std::min(min_capacity, flow_nodes[0]->m_excess);
+  min_capacity = std::min(min_capacity, -flow_nodes[1]->m_excess);
+#else
   PushEnoughFlow(flow_nodes[0], flow_nodes[1], &min_capacity);
+#endif
 
   first_edge[0]->m_edge_capacity += min_capacity;
   first_edge[1]->m_edge_capacity -= min_capacity;
@@ -719,6 +700,7 @@ void IFGraph<CapType, EdgePunishFun>::Augment(Edge* meet_edge) {
     int factor = 2 * i - 1;
     for (Edge* parent_edge = parent_node->m_parent_edge; parent_node != flow_nodes[i];
          parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
+      assert(parent_edge);
       parent_edge->m_edge_capacity += (-factor) * min_capacity;
       parent_edge->m_rev_edge->m_edge_capacity += factor * min_capacity;
       Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
@@ -739,19 +721,14 @@ void IFGraph<CapType, EdgePunishFun>::MaxFlow() {
   m_mid_at_node = m_last_at_node;
   Node* at_node = NULL;
   Edge* meet_edge = NULL;
-  int tree_edges = 0;
   while (true) {
-#ifndef ENABLE_PAR
     if (meet_edge == NULL || at_node->m_parent_edge == NULL) {
-#endif
       at_node = GetActiveNode();
       if (at_node == NULL) {
         break;
       }
       CreateOutEdges(at_node);
-#ifndef ENABLE_PAR
     }
-#endif
     meet_edge = NULL;
 
     // grow source tree and sink tree
@@ -770,7 +747,6 @@ void IFGraph<CapType, EdgePunishFun>::MaxFlow() {
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
           dst_node->m_node_state = at_node->m_node_state;
           AddActiveNodeBack(dst_node);
-          tree_edges++;
           // SET_PIXEL(m_marked_image, dst_node->m_node_idx, dst_node->m_node_state == SOURCE ? COLOUR_DARK_RED : GRAY);
         } else if (dst_node->m_node_state != at_node->m_node_state) {
           meet_edge = at_node->m_node_state == SINK ?
@@ -786,10 +762,6 @@ void IFGraph<CapType, EdgePunishFun>::MaxFlow() {
     }
 
     if (meet_edge) {
-#ifdef ENABLE_PAR
-      int origion_length = meet_edge->m_dst_node->m_terminal_dist +
-                           meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
-#endif
       // augment path
       Augment(meet_edge);
 
@@ -802,36 +774,14 @@ void IFGraph<CapType, EdgePunishFun>::MaxFlow() {
 
         FindNewPath(orphan_node);
 
-        if (orphan_node->m_parent_edge) {
-          // SET_PIXEL(m_marked_image, orphan_node->m_node_idx, orphan_node->m_node_state == SOURCE ? RED : BLUE);
-          tree_edges++;
-#ifdef ENABLE_BFS
-          if (orphan_node->m_child_edge) {
-            Node* child_node = orphan_node->m_child_edge->m_dst_node;
-            if (child_node->m_parent_edge == orphan_node->m_child_edge->m_rev_edge &&
-                child_node->m_terminal_dist <= orphan_node->m_terminal_dist) {
-              AddOrphanNode(child_node);
-            }
-          }
-#endif
-        } else {
+        if (!orphan_node->m_parent_edge) {
           FindNewOrphans(orphan_node);
         }
       }
-#ifdef ENABLE_PAR
-      int new_length = meet_edge->m_dst_node->m_terminal_dist +
-                       meet_edge->m_rev_edge->m_dst_node->m_terminal_dist;
-      // AddActiveNodeBack(at_node);
-      if (new_length > origion_length) {
-        AddActiveNodeBack(at_node);
-      } else {
-        AddActiveNodeFront(at_node);
-      }
-#endif
     }
   }
-  // printf("augment path = %d, tree_edges = %d, m_flow = %f\n",
-  //        m_path, tree_edges, m_flow);
+  // printf("augment path = %d, FindNewPath = %d, m_flow = %f\n",
+  //        m_path, m_global_timestamp, m_flow);
 }
 
 template <class CapType, class EdgePunishFun>
@@ -842,7 +792,6 @@ bool IFGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
 #undef TERMINAL
 #undef ORPHAN
 #undef EIGHT_ARR_INDEX
-#undef ENABLE_BFS
 #undef ENABLE_PAR
 #undef R_MAX 
 #endif  // INCLUDE_IFGRAPH_H_

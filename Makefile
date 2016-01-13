@@ -2,7 +2,7 @@
 
 CXX = g++
 LIBS = -lopencv_core -lopencv_highgui -lopencv_imgproc
-INCS = -I. -std=c++11 -pthread
+INCS = -I. -std=c++11 -pthread -fpermissive
 CXXFLAGS = -O4
 
 lazysnapping : \
@@ -28,8 +28,10 @@ lazysnapping : \
 	include/FGraph.h \
 	include/IFGraph.h \
 	include/ibfs/ibfs.h \
+	include/ibfs/iibfs.h \
 	include/maxflow-v3.03/graph.h \
 	include/ibfs/ibfs.cpp \
+	include/ibfs/iibfs.cpp \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \

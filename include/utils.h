@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdlib.h>
 #include <math.h>
+#include <string>
 
 #include "include/colour.h"
 
@@ -110,6 +111,7 @@ class Segmentation;
 
 namespace utils {
 
+std::string GetFileName(const char* file_all_name);
 void ReadImage(const char* file_name, ImageData<int>* image_data);
 void TurnGray(const ImageData<int>& input_image, ImageData<uchar>* gray_image);
 void SaveImage(const char* out_file_name, const ImageData<int>& image_data);

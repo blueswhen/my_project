@@ -12,6 +12,7 @@ class ImageData;
 class Square :public UserInput {
  public:
   Square();
+  Square(const char* file_name);
   virtual void DrawFirstPointForSub(int x, int y);
   virtual void DrawSubjectBegin(int x, int y);
   virtual void DrawSubjectFinish(int x, int y);

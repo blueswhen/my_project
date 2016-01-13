@@ -10,7 +10,15 @@
 #include "include/ui.h"
 
 Square::Square()
-  : m_left_up_x(0)
+  : UserInput()
+  , m_left_up_x(0)
+  , m_left_up_y(0)
+  , m_right_down_x(0)
+  , m_right_down_y(0) {}
+
+Square::Square(const char* file_name)
+  : UserInput(file_name)
+  , m_left_up_x(0)
   , m_left_up_y(0)
   , m_right_down_x(0)
   , m_right_down_y(0) {}
@@ -91,4 +99,14 @@ void Square::DrawSubjectFinish(int x, int y) {
       }
     }
   }
+  FILE* file;
+  std::string txt_name = m_file_name + "_sr.txt";
+  file = fopen(txt_name.c_str(), "w");
+  assert(file);
+  fprintf(file, "sr\n");
+  fprintf(file, "%f\n", static_cast<double>(m_left_up_x) / width);
+  fprintf(file, "%f\n", static_cast<double>(m_left_up_y) / height);
+  fprintf(file, "%f\n", static_cast<double>(m_right_down_x) / width);
+  fprintf(file, "%f\n", static_cast<double>(m_right_down_y) / height);
+  fclose(file);
 }

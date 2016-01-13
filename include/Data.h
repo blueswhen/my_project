@@ -4,6 +4,7 @@
 
 #include <vector>
 #include <stdio.h>
+#include <string.h>
 #include <assert.h>
 
 #include "include/UserInput.h"
@@ -16,18 +17,49 @@ class Data :public UserInput {
  public:
   Data(FILE* file, const ImageData<int>& src_image) {
     assert(file);
-    int image_wdith = src_image.GetWidth();
+    int image_width = src_image.GetWidth();
     int image_height = src_image.GetHeight();
     char line[256];
-    while (fgets(line, 256, file)) {
-      double x_v = atof(line);
-      int x = x_v * image_wdith;
-      assert(fgets(line, 256, file));
-      double y_v = atof(line);
-      int y = y_v * image_height;
-      int index = y * image_wdith + x;
-      m_sub_mark_index.push_back(index);
-      m_sub_mark_value.push_back(GET_PIXEL(&src_image, index));
+    if (!strcmp(fgets(line, 256, file), "ln\n")) {
+      // line
+      while (fgets(line, 256, file)) {
+        double x_v = atof(line);
+        int x = x_v * image_width;
+        assert(fgets(line, 256, file));
+        double y_v = atof(line);
+        int y = y_v * image_height;
+        int index = y * image_width + x;
+        m_sub_mark_index.push_back(index);
+        m_sub_mark_value.push_back(GET_PIXEL(&src_image, index));
+      }
+    } else {
+      // square
+      int idx[4];
+      int i = 0;
+      while (fgets(line, 256, file)) {
+        assert(i < 4);
+        double x_v = atof(line);
+        idx[i++] = x_v * image_width;
+        assert(fgets(line, 256, file));
+        double y_v = atof(line);
+        idx[i++] = y_v * image_height;
+      }
+      int x_leftup = idx[0];
+      int y_leftup = idx[1];
+      int x_rightdown = idx[2];
+      int y_rightdown = idx[3];
+      for (int y = 0; y < image_height; ++y) {
+        for (int x = 0; x < image_width; ++x) {
+          int index = y * image_width + x;
+          if (y >= y_leftup && y < y_rightdown && x >= x_leftup && x < x_rightdown) {
+            m_sub_mark_index.push_back(index);
+            m_sub_mark_value.push_back(GET_PIXEL(&src_image, index));
+          } else {
+            m_bck_mark_index.push_back(index);
+            m_bck_mark_value.push_back(GET_PIXEL(&src_image, index));
+          }
+        }
+      }
     }
   }
 };

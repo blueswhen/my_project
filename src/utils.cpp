@@ -8,6 +8,7 @@
 #include <vector>
 #include <stack>
 #include <queue>
+#include <string>
 
 #include "include/colour.h"
 #include "include/ImageData.h"
@@ -20,6 +21,12 @@
 typedef unsigned char uchar;
 
 namespace utils {
+
+std::string GetFileName(const char* file_all_name) {
+  std::string str_in(file_all_name);
+  size_t pos = str_in.find_last_of(".");
+  return str_in.substr(0, pos);
+}
 
 void ReadImage(const char* file_name, ImageData<int>* image_data) {
   if (!image_data->IsEmpty()) {

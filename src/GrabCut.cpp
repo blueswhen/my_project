@@ -59,6 +59,8 @@ void GrabCut::DoRightMouseMove(int x, int y) {
 
 void GrabCut::DoLeftButtonUp(int x, int y) {
   m_usr_input->DrawSubjectFinish(x, y);
+  // std::string input_name = m_usr_input->GetImageName() + "_sr_input.bmp";
+  // utils::SaveImage(input_name.c_str(), *(m_sd->GetSourceImage()));
   DoPartition();
 }
 
@@ -265,13 +267,37 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   }
 
 #if B_MAXFLOW
+  // CountTime ct;
+  // ct.ContBegin();
+
   graph.maxflow();
+
+  // ct.ContEnd();
+  // ct.PrintTime();
 #endif
 #if IGRAPH
+  // CountTime ct;
+  // ct.ContBegin();
+
   igraph.MaxFlow();
+
+  // ct.ContEnd();
+  // ct.PrintTime();
 #endif
 #if FGRAPH
   fgraph.MaxFlow();
+#endif
+
+#if 0
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      int vtx0 = BUILD_VTX(y * width + x);
+      if ((graph.what_segment(vtx0) == GraphType::SOURCE) !=
+          igraph.IsBelongToSource(vtx0)) {
+        printf("error pixel\n");
+      }
+    }
+  }
 #endif
 
 #if 1
@@ -283,9 +309,9 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
         int vtx0 = BUILD_VTX(index);
 #if B_MAXFLOW
         if (graph.what_segment(vtx0) == GraphType::SOURCE) {
-          SET_PIXEL(marked_image, index, SUBJECT);
+          SET_PIXEL(marked_image, index, PR_SUB);
         } else {
-          SET_PIXEL(marked_image, index, BACKGROUND);
+          SET_PIXEL(marked_image, index, PR_BCK);
         }
 #endif
 #if IGRAPH 
@@ -325,14 +351,14 @@ void CreateFinalMarkedImage(ImageData<int>* marked_image) {
 }
 
 void GrabCut::DoPartition() {
-  CountTime ct;
-  ct.ContBegin();
+  // CountTime ct;
+  // ct.ContBegin();
 
   SegmentationWithoutCoarsen();
   // SegmentationWithCoarsen();
 
-  ct.ContEnd();
-  ct.PrintTime();
+  // ct.ContEnd();
+  // ct.PrintTime();
 }
 
 void GrabCut::InitMarkedImage(SegmentationData* sd, UserInput* uip) {
@@ -393,8 +419,13 @@ void GrabCut::Cut(SegmentationData* sd, UserInput* uip) {
     AssignGmmsComponents(*source_image, *marked_image,
                          &background_gmm, &subject_gmm, &comp_idxs);
     LearnGmms(*source_image, *marked_image, comp_idxs, &background_gmm, &subject_gmm);
+
+  CountTime ct;
+  ct.ContBegin();
     GraphCutWithGrab(*source_image, marked_image, background_gmm, subject_gmm,
                      lambda, beta, gamma, NULL);
+  ct.ContEnd();
+  ct.PrintTime();
   }
 
   CreateFinalMarkedImage(marked_image);

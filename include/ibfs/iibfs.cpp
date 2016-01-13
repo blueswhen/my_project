@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <assert.h>
-#include "ibfs.h"
+#include "iibfs.h"
 #include <algorithm>
 
 #define ORPHAN  ( (Arc *) 2 )
@@ -37,73 +37,32 @@ else                        \
   m_orphanFirst = (n);                \
 }
 
-IBFSGraph::IBFSGraph()
+IIBFSGraph::IIBFSGraph()
 {
   m_numNodes = 0;
   m_uniqOrphansS = m_uniqOrphansT = 0;
-  m_arcs = m_arcEnd = NULL;
-  m_nodes = m_nodeEnd = NULL;
   m_topLevelS = m_topLevelT = 0;
   m_flow = 0;
-  m_time = 0;
-  m_count = 0;
   m_orphan_count = 0;
   m_path = 0;
   m_orphanFirst = m_orphanLast = NULL;
-  m_memArcs = NULL;
-  m_tmpArcs = NULL;
-  m_tmpEdges = m_tmpEdgeLast = NULL;
+  m_nlink = 0;
 }
 
-IBFSGraph::~IBFSGraph()
+IIBFSGraph::~IIBFSGraph()
 {
-  if (m_nodes) free(m_nodes);
-  if (m_memArcs) free(m_memArcs);
+  if (m_nodes) delete [] m_nodes;
   m_active0.free();
   m_activeS1.free();
   m_activeT1.free();
 }
 
-void IBFSGraph::initGraph()
-{
-  initGraphFast();
-}
-
-void IBFSGraph::initSize(int numNodes, int numEdges)
-{
-  // allocate m_nodes
-  m_numNodes = numNodes;
-  m_nodes = new Node[numNodes+1];
-  memset(m_nodes, 0, sizeof(Node)*(numNodes+1));
-  m_nodeEnd = m_nodes+numNodes;
-  m_active0.init(numNodes);
-  m_activeS1.init(numNodes);
-  m_activeT1.init(numNodes);
-  // init members
-  m_flow = 0;
-
-  // allocate m_arcs
-  size_t arcMemsize = sizeof(TmpArc) * (numEdges * 2) + sizeof(TmpEdge) * numEdges;
-  if (arcMemsize < sizeof(Arc) * (numEdges * 2)) {
-    arcMemsize = sizeof(Arc) * (numEdges * 2);
-  }
-  m_memArcs = new char[arcMemsize];
-  memset(m_memArcs, 0, sizeof(char) * arcMemsize);
-  m_tmpEdges = (TmpEdge*)(m_memArcs);
-  m_tmpEdgeLast = m_tmpEdges; // will advance as edges are added
-  m_tmpArcs = (TmpArc*)(m_memArcs + arcMemsize - sizeof(TmpArc) * (numEdges * 2));
-  m_arcs = (Arc*)m_memArcs;
-  m_arcEnd = m_arcs + numEdges * 2;
-
-}
-
 #ifdef ENABLE_DYNAMIC_EDGE
-void IBFSGraph::initSize(int numNodes, int width, int height, EPF epf) {
+void IIBFSGraph::initSize(int numNodes, int width, int height, EPF epf) {
   // allocate m_nodes
   m_numNodes = numNodes;
-  m_nodes = new Node[numNodes+1];
-  memset(m_nodes, 0, sizeof(Node)*(numNodes+1));
-  m_nodeEnd = m_nodes+numNodes;
+  m_nodes = new Node[numNodes];
+  memset(m_nodes, 0, sizeof(Node)*(numNodes));
   m_active0.init(numNodes);
   m_activeS1.init(numNodes);
   m_activeT1.init(numNodes);
@@ -114,7 +73,7 @@ void IBFSGraph::initSize(int numNodes, int width, int height, EPF epf) {
   m_epf = epf;
 }
 
-void IBFSGraph::AddActiveNodes(int node_x, int node_y) {
+void IIBFSGraph::AddActiveNodes(int node_x, int node_y) {
   int index = node_y * m_image_width + node_x;
   Node* cen_node = &m_nodes[index];
   int arr_index[HALF_NEIGHBOUR] =
@@ -146,7 +105,7 @@ void IBFSGraph::AddActiveNodes(int node_x, int node_y) {
   }
 }
 
-IBFSGraph::Arc* IBFSGraph::GetEdge(Node* src_node, Node* dst_node) {
+IIBFSGraph::Arc* IIBFSGraph::GetEdge(Node* src_node, Node* dst_node) {
   for (int i = 0; i < src_node->m_out_edges_num; ++i) {
     if (src_node->m_out_edges[i].head == dst_node) {
       return &src_node->m_out_edges[i];
@@ -155,7 +114,7 @@ IBFSGraph::Arc* IBFSGraph::GetEdge(Node* src_node, Node* dst_node) {
   return NULL;
 }
 
-IBFSGraph::Arc* IBFSGraph::CreateEdge(Node* src_node, Node* dst_node, double punish_factor) {
+IIBFSGraph::Arc* IIBFSGraph::CreateEdge(Node* src_node, Node* dst_node, double punish_factor) {
   Arc* edge = &src_node->m_out_edges[src_node->m_out_edges_num++];
   Arc* rev_edge = &dst_node->m_out_edges[dst_node->m_out_edges_num++];
   double cap = punish_factor * m_epf(src_node->m_node_colour, dst_node->m_node_colour);
@@ -170,11 +129,12 @@ IBFSGraph::Arc* IBFSGraph::CreateEdge(Node* src_node, Node* dst_node, double pun
   return edge;
 }
 
-void IBFSGraph::CreateOutEdges(Node* cen_node) {
+void IIBFSGraph::CreateOutEdges(Node* cen_node) {
   assert(cen_node != NULL);
   if (cen_node->m_is_gotten_all_edges) {
     return;
   }
+  m_nlink++;
   int coordinate = cen_node->m_node_idx;
   int y_node = coordinate / m_image_width;
   int x_node = coordinate - y_node * m_image_width;
@@ -191,7 +151,7 @@ void IBFSGraph::CreateOutEdges(Node* cen_node) {
           ABS(arr_nodes_idx[i] - cen_node->m_node_idx) == m_image_width) {
         punish_factor = 1;
       } else {
-        punish_factor = ibgraph_div_sqrt2;
+        punish_factor = iibgraph_div_sqrt2;
       }
       CreateEdge(cen_node, arr_node, punish_factor);
     }
@@ -200,95 +160,7 @@ void IBFSGraph::CreateOutEdges(Node* cen_node) {
 }
 #endif
 
-void IBFSGraph::initGraphFast()
-{
-  Node *x;
-  Arc *a;
-  TmpArc *ta, *taEnd;
-  TmpEdge *te;
-
-  // m_tmpEdges:      edges read
-  // node.label:      out degree
-
-  // calculate start arc offsets every node
-  m_nodes->firstArc = (Arc*)(m_tmpArcs);
-  for (x=m_nodes; x != m_nodeEnd; x++) {
-    (x+1)->firstArc = (Arc*)(((TmpArc*)(x->firstArc)) + x->label);
-    x->label = ((TmpArc*)(x->firstArc))-m_tmpArcs;
-  }
-  m_nodeEnd->label = m_arcEnd-m_arcs;
-
-  // m_tmpEdges:        edges read
-  // node.label:         index into m_arcs array of first out arc
-  // node.firstArc-m_tmpArcs:   index into m_arcs array of next out arc to be allocated
-  //              (initially the first out arc)
-
-  // copy to temp m_arcs memory
-  for (te=m_tmpEdges; te != m_tmpEdgeLast; te++) {
-    ta = (TmpArc*)(te->tail->firstArc);
-    ta->cap = te->cap;
-    ta->rev = (TmpArc*)(te->head->firstArc);
-
-    ta = (TmpArc*)(te->head->firstArc);
-    ta->cap = te->revCap;
-    ta->rev = (TmpArc*)(te->tail->firstArc);
-
-    te->tail->firstArc = (Arc*)(((TmpArc*)(te->tail->firstArc))+1);
-    te->head->firstArc = (Arc*)(((TmpArc*)(te->head->firstArc))+1);
-  }
-
-  // m_tmpEdges:        edges read
-  // m_tmpArcs:          m_arcs with reverse pointer but no node id
-  // node.label:         index into m_arcs array of first out arc
-  // node.firstArc-m_tmpArcs:   index into m_arcs array of last allocated out arc
-
-  // copy to permanent m_arcs array, but saving tail instead of head
-  a = m_arcs;
-  x = m_nodes;
-  taEnd = (m_tmpArcs+(m_arcEnd-m_arcs));
-  for (ta=m_tmpArcs; ta != taEnd; ta++) {
-    while (x->label <= (ta-m_tmpArcs)) x++;
-    a->head = (x-1);
-    a->rCap = ta->cap;
-    a->rev = m_arcs + (ta->rev-m_tmpArcs);
-    a++;
-  }
-
-  // m_tmpEdges:        overwritten
-  // m_tmpArcs:          overwritten
-  // m_arcs:          m_arcs array
-  // node.label:         index into m_arcs array of first out arc
-  // node.firstArc-m_tmpArcs:   index into m_arcs array of last allocated out arc
-  // arc.head = tail of arc
-
-  // swap the head and tail pointers and set isRevResidual
-  for (a=m_arcs; a != m_arcEnd; a++) {
-    if (a->rev <= a) continue;
-    x = a->head;
-    a->head = a->rev->head;
-    a->rev->head = x;
-    a->isRevResidual = (a->rev->rCap != 0);
-    a->rev->isRevResidual = (a->rCap != 0);
-  }
-
-  // set firstArc pointers in m_nodes array
-  for (x=m_nodes; x <= m_nodeEnd; x++) {
-    x->firstArc = (m_arcs + x->label);
-    if (x->excess == 0) {
-      x->label = m_numNodes;
-      continue;
-    }
-    if (x->excess > 0) {
-      x->label = 1;
-      m_activeS1.add(x);
-    } else {
-      x->label = -1;
-      m_activeT1.add(x);
-    }
-  }
-}
-
-template<bool sTree> void IBFSGraph::augmentTree(Node *x, double bottleneck)
+template<bool sTree> void IIBFSGraph::augmentTree(Node *x, double bottleneck)
 {
   Node *y;
   Arc *a;
@@ -328,7 +200,7 @@ template<bool sTree> void IBFSGraph::augmentTree(Node *x, double bottleneck)
   }
 }
 
-void IBFSGraph::augment(Arc *bridge)
+void IIBFSGraph::augment(Arc *bridge)
 {
   Node *x;
   Arc *a;
@@ -344,7 +216,7 @@ void IBFSGraph::augment(Arc *bridge)
     if (bottleneck > a->rev->rCap) {
       bottleneck = a->rev->rCap;
     }
-    m_path++;
+    path++;
   }
   if (bottleneck > x->excess) {
     bottleneck = x->excess;
@@ -358,14 +230,14 @@ void IBFSGraph::augment(Arc *bridge)
     if (bottleneck > a->rCap) {
       bottleneck = a->rCap;
     }
-    m_path++;
+    path++;
   }
   if (bottleneck > (-x->excess)) {
     bottleneck = (-x->excess);
   }
-  // if (m_path != path) {
+  // if (path != m_path) {
+  //   printf("path = %d\n", path);
   //   m_path = path;
-  //   printf("m_path = %d\n", m_path);
   // }
 
   // augment connecting arc
@@ -387,7 +259,7 @@ void IBFSGraph::augment(Arc *bridge)
   m_flow += bottleneck;
 }
 
-template<bool sTree> void IBFSGraph::adoption()
+template<bool sTree> void IIBFSGraph::adoption()
 {
   Node *x, *y, *z;
   Arc *a, *aEnd;
@@ -433,16 +305,12 @@ template<bool sTree> void IBFSGraph::adoption()
 
     // give up on same level - relabel it!
     // (1) create orphan sons
-    // m_ct.ContBegin();
     for (y=x->firstSon; y != NULL; y=z)
     {
       z=y->nextPtr;
       ADD_ORPHAN_BACK(y);
     }
     x->firstSon = NULL;
-    // m_ct.ContEnd();
-    // m_time += 1000 * m_ct.ContResult();
-    // m_count++;
 
     // on the top level there is no need to relabel
     // if (x->label == (sTree ? m_topLevelS : -m_topLevelT)) {
@@ -472,27 +340,53 @@ template<bool sTree> void IBFSGraph::adoption()
 
     // (3) relabel onto new parent
     if (x->parent != NULL) {
-      assert(sTree ? x->label < minLabel + 1 : x->label > minLabel - 1);
       x->label = minLabel + (sTree ? 1 : -1);
       x->nextPtr = x->parent->head->firstSon;
       x->parent->head->firstSon = x;
       // add to active list of the next growth phase
       if (sTree) {
         if (x->label == m_topLevelS) {
-           m_activeS1.add(x);
+          // if (!x->m_is_active) {
+            m_activeS1.add(x);
+            x->m_is_active = true;
+          // }
         }
       } else {
         if (x->label == -m_topLevelT) {
-           m_activeT1.add(x);
+          // if (!x->m_is_active) {
+            m_activeT1.add(x);
+            x->m_is_active = true;
+          // }
         }
       }
     } else {
+      for (int i = 0; i < x->m_out_edges_num; ++i) {
+        a = &x->m_out_edges[i];
+        y = a->head;
+        if (y->label != m_numNodes) {
+          if (sTree) {
+            if (y->label == m_topLevelS) {
+              if (!y->m_is_active) {
+                m_activeS1.add(y);
+                y->m_is_active = true;
+              }
+            }
+          } else {
+            if (y->label == -m_topLevelT) {
+              if (!y->m_is_active) {
+                m_activeT1.add(y);
+                y->m_is_active = true;
+              }
+            }
+          }
+        }
+      }
       x->label = m_numNodes;
     }
   }
 }
 
-template<bool dirS> void IBFSGraph::growth() {
+template<bool dirS> void IIBFSGraph::growth() {
   Node *x, *y;
   Arc *a, *aEnd;
 
@@ -505,6 +399,7 @@ template<bool dirS> void IBFSGraph::growth() {
       assert(x->label == dirS ? m_topLevelS: -m_topLevelT);
       continue;
     }
+    assert(!x->m_is_active);
 
     // grow or augment
 #ifndef ENABLE_DYNAMIC_EDGE
@@ -524,8 +419,18 @@ template<bool dirS> void IBFSGraph::growth() {
         y->parent = a->rev;
         y->nextPtr = x->firstSon;
         x->firstSon = y;
-        if (dirS) m_activeS1.add(y);
-        else m_activeT1.add(y);
+        if (dirS) {
+          // if(!y->m_is_active) {
+            m_activeS1.add(y); 
+            y->m_is_active = true;
+          // }
+        }
+        else {
+          // if (!y->m_is_active) {
+            m_activeT1.add(y); 
+            y->m_is_active = true;
+          // }
+        }
       }
       else if (dirS ? (y->label < 0) : (y->label > 0))
       {
@@ -548,7 +453,7 @@ template<bool dirS> void IBFSGraph::growth() {
   m_active0.clear();
 }
 
-double IBFSGraph::computeMaxFlow() {
+double IIBFSGraph::computeMaxFlow() {
   // init
   m_orphanFirst = IB_ORPHANS_END;
   m_topLevelS = m_topLevelT = 1;
@@ -578,7 +483,9 @@ double IBFSGraph::computeMaxFlow() {
       dirS=true;
     }
   }
-  printf("path = %d, flow = %f, time = %f, count = %d\n", m_path, m_flow, m_time, m_count);
-  // printf("m_flow = %f\n", m_flow);
+  // printf("path = %d, orphan count = %d, flow = %f\n", m_path, m_orphan_count, m_flow);
+  // printf("r = %f\n", static_cast<double>(m_nlink)/(m_image_width * m_image_height));
   return m_flow;
 }
+
+

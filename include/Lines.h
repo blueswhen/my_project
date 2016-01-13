@@ -3,6 +3,7 @@
 #define INCLUDE_LINES_H_
 
 #include <vector>
+#include <string>
 
 #include "include/UserInput.h"
 
@@ -12,6 +13,7 @@ class ImageData;
 class Lines :public UserInput {
  public:
   Lines();
+  Lines(const char* file_name);
   Lines(Lines* half_scale_lines);
   virtual void DrawFirstPointForSub(int x, int y);
   virtual void DrawFirstPointForBck(int x, int y);

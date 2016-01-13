@@ -6,6 +6,7 @@
 #include <math.h>
 #include <float.h>
 #include <assert.h>
+#include <string>
 #include <opencv/highgui.h>
 
 #include "include/ImageData.h"
@@ -28,7 +29,7 @@
 #define IMAGE_OUT_NAME_2 "result2.bmp"
 #define IMAGE_OUT_NAME_3 "result3.bmp"
 
-// #define NO_UI
+#define NO_UI
 
 int main(int argc, char** argv) {
   if (argc == 1) {
@@ -38,6 +39,7 @@ int main(int argc, char** argv) {
   ImageData<int> src;
   utils::ReadImage(argv[1], &src);
   ImageData<int> src_bk;
+  std::string file_name = utils::GetFileName(argv[1]);
 #ifndef NO_UI
   if (argc == 3) {
     utils::ReadImage(argv[2], &src_bk);
@@ -60,32 +62,38 @@ int main(int argc, char** argv) {
   SegmentationData sd(&src, &src_bk, SUB_COL, BCK_COL, &scale_50_sd);
 
 #ifdef NO_UI
-  if (argc == 3) {
-    FILE* file = NULL;
-    file = fopen(argv[2], "r");
-    assert(file);
-    Data da(file, src);
-    LazySnapping ls(&sd, &da);
-    ls.DoPartition();
-    // GrabCut gc(&sd, &da);
-    // gc.DoPartition();
-    // utils::SaveImage(IMAGE_OUT_NAME, src);
-    return 0;
-  }
-#endif
+  FILE* file = NULL;
+  std::string txt_name = file_name + ".txt";
+  // std::string txt_name = file_name + "_sr.txt";
+  // printf("name = %s\n", txt_name.c_str());
+  file = fopen(txt_name.c_str(), "r");
+  assert(file);
+  Data da(file, src);
+  LazySnapping ls(&sd, &da);
+  ls.DoPartition();
+  // GrabCut gc(&sd, &da);
+  // gc.DoPartition();
+  // utils::SaveImage(IMAGE_OUT_NAME, src);
+  utils::SaveImage(IMAGE_OUT_NAME, *sd.GetMarkedImage());
+  fclose(file);
+  return 0;
+#else
 
   Lines ln_25;
   Lines ln_50(&ln_25);
   // Lines ln_50;
-  Lines ln(&ln_50);
-  Square sr;
+  // Lines ln(&ln_50);
+  Lines ln(file_name.c_str());
+  Square sr(file_name.c_str());
   LazySnapping ls(&sd, &ln);
-  GrabCut gc(&sd, &ln);
+  // GrabCut gc(&sd, &ln);
+  GrabCut gc(&sd, &sr);
 
   cv::namedWindow(ui::WIN_NAME, cv::WINDOW_AUTOSIZE);
 
   ui::Transpoter tp;
   tp.seg = &ls;
+  // tp.seg = &gc;
   cv::setMouseCallback(ui::WIN_NAME, ui::on_mouse, &tp);
 
   ui::ShowImage(src);
@@ -141,4 +149,5 @@ exit_main:
     // utils::SaveImage(IMAGE_OUT_NAME_3, *scale_25_sd.GetMarkedImage());
     // utils::SaveImage(IMAGE_OUT_NAME, scale_25_src);
     return 0;
+#endif
 }
