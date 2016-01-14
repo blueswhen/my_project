@@ -445,10 +445,10 @@ template<bool sTree> void IBFSGraph::adoption()
     // m_count++;
 
     // on the top level there is no need to relabel
-    // if (x->label == (sTree ? m_topLevelS : -m_topLevelT)) {
-    //   x->label = m_numNodes;
-    //   continue;
-    // }
+    if (x->label == (sTree ? m_topLevelS : -m_topLevelT)) {
+      x->label = m_numNodes;
+      continue;
+    }
 
     // (2) relabel: find the lowest level parent
     minLabel = (sTree ? m_topLevelS : -m_topLevelT);
@@ -578,7 +578,7 @@ double IBFSGraph::computeMaxFlow() {
       dirS=true;
     }
   }
-  printf("path = %d, flow = %f, time = %f, count = %d\n", m_path, m_flow, m_time, m_count);
+  // printf("path = %d, flow = %f, time = %f, count = %d\n", m_path, m_flow, m_time, m_count);
   // printf("m_flow = %f\n", m_flow);
   return m_flow;
 }

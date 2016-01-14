@@ -403,10 +403,10 @@ ct.PrintTime();
 #endif
 
 #if IFGRAPH
-ct.ContBegin();
+// ct.ContBegin();
   ifgraph.MaxFlow();
-ct.ContEnd();
-ct.PrintTime();
+// ct.ContEnd();
+// ct.PrintTime();
 #endif
 #endif
 

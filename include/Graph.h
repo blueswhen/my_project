@@ -135,8 +135,10 @@ class Graph {
         //   assert(m_first_at_source_node->m_next_active_source->m_terminal_dist ==
         //          m_global_source_dist);
         // }
-        m_global_state = SINK;
-        is_break = true;
+        if (m_global_sink_orphan_num <= m_global_source_orphan_num) {
+          m_global_state = SINK;
+          is_break = true;
+        }
       }
       active_node = m_first_at_source_node;
       m_first_at_source_node = m_first_at_source_node->m_next_active_source;
@@ -214,8 +216,10 @@ class Graph {
         //   assert(m_first_at_sink_node->m_next_active_sink->m_terminal_dist ==
         //          m_global_sink_dist);
         // }
-        m_global_state = SOURCE;
-        is_break = true;
+        if (m_global_source_orphan_num <= m_global_sink_orphan_num) {
+          m_global_state = SOURCE;
+          is_break = true;
+        }
       }
       active_node = m_first_at_sink_node;
       m_first_at_sink_node = m_first_at_sink_node->m_next_active_sink;
@@ -271,6 +275,8 @@ class Graph {
   int m_global_source_dist;
   int m_global_sink_dist;
   NodeState m_global_state;
+  int m_global_source_orphan_num;
+  int m_global_sink_orphan_num;
   CapType m_flow;
 };
 
@@ -289,6 +295,8 @@ Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
   , m_global_source_dist(1)
   , m_global_sink_dist(1)
   , m_global_state(SOURCE)
+  , m_global_source_orphan_num(0)
+  , m_global_sink_orphan_num(0)
   , m_flow(0) {}
 
 template <class CapType>
@@ -465,7 +473,6 @@ CapType Graph<CapType>::MaxFlow() {
     if (node->m_residue_capacity != 0) {
       node->m_node_state = node->m_residue_capacity < 0 ? SINK : SOURCE;
       node->m_parent_edge = TERMINAL;
-      // node->m_timestamp = 0;
       node->m_terminal_dist = 1;
       if (node->m_node_state == SOURCE) {
         AddActiveSourceNodeBack(node);
@@ -557,16 +564,28 @@ CapType Graph<CapType>::MaxFlow() {
         if (!orphan_node) {
           break;
         }
+        if (orphan_node->m_node_state == SOURCE) {
+          m_global_source_orphan_num++;
+        } else {
+          m_global_sink_orphan_num++;
+        }
 
         FindNewPath(orphan_node);
 
         if (!orphan_node->m_parent_edge) {
-          for (Node* child = orphan_node->m_first_child_node; child; child = child->m_next_child_node) {
+          for (Node* child = orphan_node->m_first_child_node;
+               child; child = child->m_next_child_node) {
             AddOrphanNode(child);
           }
           orphan_node->m_first_child_node = NULL;
+          
+
           int dist_min = (orphan_node->m_node_state == SOURCE) ?
                          m_global_source_dist : m_global_sink_dist;
+          if (orphan_node->m_terminal_dist == dist_min) {
+            continue;
+          }
+
           for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
             Edge* connected_edge = &orphan_node->m_out_edges[i];
             Node* dst_node = connected_edge->m_dst_node;
