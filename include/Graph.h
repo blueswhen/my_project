@@ -406,7 +406,8 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
       }
       if (connected_edge->m_dst_node->m_parent_edge) {
         connected_edge_min = connected_edge;
-        assert(orphan_node->m_terminal_dist == connected_edge_min->m_dst_node->m_terminal_dist + 1);
+        assert(orphan_node->m_terminal_dist ==
+               connected_edge_min->m_dst_node->m_terminal_dist + 1);
         break;
       }
 #else
@@ -582,41 +583,39 @@ CapType Graph<CapType>::MaxFlow() {
 
           int dist_min = (orphan_node->m_node_state == SOURCE) ?
                          m_global_source_dist : m_global_sink_dist;
-          if (orphan_node->m_terminal_dist == dist_min) {
-            continue;
-          }
-
-          for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
-            Edge* connected_edge = &orphan_node->m_out_edges[i];
-            Node* dst_node = connected_edge->m_dst_node;
-            Edge* parent_edge = dst_node->m_parent_edge;
-            CapType capacity = dst_node->m_node_state == SINK ?
-                               connected_edge->m_edge_capacity :
-                               connected_edge->m_rev_edge->m_edge_capacity;
-            if (parent_edge && capacity &&
-                dst_node->m_node_state == orphan_node->m_node_state &&
-                dst_node->m_terminal_dist < dist_min) {
-              orphan_node->m_parent_edge = connected_edge;
-              dist_min = dst_node->m_terminal_dist;
-              if (dist_min == orphan_node->m_terminal_dist) {
-                break;
+          if (orphan_node->m_terminal_dist != dist_min) {
+            for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+              Edge* connected_edge = &orphan_node->m_out_edges[i];
+              Node* dst_node = connected_edge->m_dst_node;
+              Edge* parent_edge = dst_node->m_parent_edge;
+              CapType capacity = dst_node->m_node_state == SINK ?
+                                 connected_edge->m_edge_capacity :
+                                 connected_edge->m_rev_edge->m_edge_capacity;
+              if (parent_edge && capacity &&
+                  dst_node->m_node_state == orphan_node->m_node_state &&
+                  dst_node->m_terminal_dist < dist_min) {
+                orphan_node->m_parent_edge = connected_edge;
+                dist_min = dst_node->m_terminal_dist;
+                if (dist_min == orphan_node->m_terminal_dist) {
+                  break;
+                }
               }
             }
-          }
-          if (orphan_node->m_parent_edge) {
-            Node* dst_node = orphan_node->m_parent_edge->m_dst_node;
-            orphan_node->m_next_child_node = dst_node->m_first_child_node;
-            dst_node->m_first_child_node = orphan_node;
-            assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
-            // orphan_node->m_timestamp = dst_node->m_timestamp;
-            orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
-            if (orphan_node->m_node_state == SOURCE) {
-              if (orphan_node->m_terminal_dist == m_global_source_dist) {
-                AddActiveSourceNodeBack(orphan_node);
-              }
-            } else {
-              if (orphan_node->m_terminal_dist == m_global_sink_dist) {
-                AddActiveSinkNodeBack(orphan_node);
+            if (orphan_node->m_parent_edge) {
+              Node* dst_node = orphan_node->m_parent_edge->m_dst_node;
+              orphan_node->m_next_child_node = dst_node->m_first_child_node;
+              dst_node->m_first_child_node = orphan_node;
+              assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
+              // orphan_node->m_timestamp = dst_node->m_timestamp;
+              orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
+              if (orphan_node->m_node_state == SOURCE) {
+                if (orphan_node->m_terminal_dist == m_global_source_dist) {
+                  AddActiveSourceNodeBack(orphan_node);
+                }
+              } else {
+                if (orphan_node->m_terminal_dist == m_global_sink_dist) {
+                  AddActiveSinkNodeBack(orphan_node);
+                }
               }
             }
           }
