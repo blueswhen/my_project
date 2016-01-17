@@ -451,7 +451,12 @@ void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
   Edge* connected_edge_min = NULL;
   orphan_node->m_parent_edge = ORPHAN;
 
-  CreateOutEdges(orphan_node);
+  if (orphan_node->m_terminal_dist == 1) {
+    CreateOutEdges(orphan_node);
+    orphan_node->m_parent_edge = NULL;
+    return;
+  }
+  assert(orphan_node->m_is_gotten_all_edges);
   for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
     Edge* connected_edge = &orphan_node->m_out_edges[i];
     if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
@@ -464,8 +469,7 @@ void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
       }
       if (connected_edge->m_dst_node->m_parent_edge) {
         connected_edge_min = connected_edge;
-        assert(orphan_node->m_terminal_dist ==
-               connected_edge_min->m_dst_node->m_terminal_dist + 1);
+        assert(orphan_node->m_terminal_dist == connected_edge_min->m_dst_node->m_terminal_dist + 1);
         break;
       }
     }
@@ -495,7 +499,6 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       if (!at_node) {
         continue;
       }
-      CreateOutEdges(at_node);
     }
     meet_edge = NULL;
     if (at_node->m_node_state == SOURCE) {
@@ -513,6 +516,7 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
     }
 
     // grow source tree and sink tree
+    CreateOutEdges(at_node);
     for (int i = 0; i < at_node->m_out_edges_num; ++i) {
       Edge* connected_edge = &at_node->m_out_edges[i];
       CapType capacity = at_node->m_node_state == SINK ?
