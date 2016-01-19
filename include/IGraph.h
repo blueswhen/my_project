@@ -60,6 +60,10 @@ class IGraph {
     Node* m_dst_node;
     CapType m_edge_capacity;
     Edge* m_rev_edge;
+    Edge ()
+      : m_dst_node(NULL)
+      , m_edge_capacity(0)
+      , m_rev_edge(NULL) {}
   };
 
   struct Node {
@@ -82,7 +86,10 @@ class IGraph {
     bool m_is_gotten_all_edges;
     Edge m_out_edges[NEIGHBOUR];
     int m_out_edges_num;
+    bool m_in_actived;
     Node* m_next_orphan;
+    Node()
+      : m_out_edges({Edge(),Edge(),Edge(),Edge(),Edge(),Edge(),Edge(),Edge()}) {}
   };
 
   IGraph(int max_nodes_number, int image_width,
@@ -99,6 +106,7 @@ class IGraph {
     if (!node->m_is_source_active) {
       assert(!node->m_next_active_source);
       node->m_is_source_active = true;
+      node->m_in_actived = true;
       if (m_last_at_source_node) {
         m_last_at_source_node->m_next_active_source = node;
         m_last_at_source_node = node;
@@ -175,6 +183,7 @@ class IGraph {
     if (!node->m_is_sink_active) {
       assert(!node->m_next_active_sink);
       node->m_is_sink_active = true;
+      node->m_in_actived = true;
       if (m_last_at_sink_node) {
         m_last_at_sink_node->m_next_active_sink = node;
         m_last_at_sink_node = node;
@@ -248,9 +257,13 @@ class IGraph {
   }
   void AddActiveNodeBack(Node* node) {
     if (node->m_node_state == SOURCE) {
-      AddActiveSourceNodeBack(node);
+      if (node->m_terminal_dist == m_global_source_dist) {
+        AddActiveSourceNodeBack(node);
+      }
     } else {
-      AddActiveSinkNodeBack(node);
+      if (node->m_terminal_dist == m_global_sink_dist) {
+        AddActiveSinkNodeBack(node);
+      }
     }
   }
   Node* GetActiveNode() {
@@ -287,8 +300,8 @@ class IGraph {
 
   void FindNewPath(Node* orphan_node);
   void CreateOutEdges(Node* cen_node);
-  Edge* GetEdge(Node* src_node, Node* dst_node);
-  Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor);
+  Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor,
+                   int edge_index, int rev_edge_index);
 
   std::vector<Node> m_nodes;
   CapType m_flow;
@@ -366,6 +379,7 @@ void IGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacit
   node->m_terminal_dist = 1;
   node->m_is_gotten_all_edges = false;
   node->m_out_edges_num = 0;
+  node->m_in_actived = false;
   node->m_next_orphan = NULL;
   // SET_PIXEL(m_marked_image, node_id, node_capacity > 0 ? WHITE : BLACK);
 }
@@ -379,6 +393,13 @@ void IGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
   for (int i = 0; i < HALF_NEIGHBOUR; ++i) {
     Node* arr_node = &m_nodes[arr_index[i]];
     if (arr_index[i] < index && cen_node->m_node_state != arr_node->m_node_state) {
+      // if (cen_node->m_node_state == SOURCE) {
+      //   AddActiveSourceNodeBack(cen_node);
+      //   // AddActiveSinkNodeBack(arr_node);
+      // } else {
+      //   AddActiveSourceNodeBack(arr_node);
+      //   // AddActiveSinkNodeBack(cen_node);
+      // }
       AddActiveNodeBack(cen_node);
       AddActiveNodeBack(arr_node);
       // m_actives_num++;
@@ -388,21 +409,10 @@ void IGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
 }
 
 template <class CapType, class EdgePunishFun>
-typename IGraph<CapType, EdgePunishFun>::Edge* IGraph<CapType, EdgePunishFun>::GetEdge(
-  Node* src_node, Node* dst_node) {
-  for (int i = 0; i < src_node->m_out_edges_num; ++i) {
-    if (src_node->m_out_edges[i].m_dst_node == dst_node) {
-      return &src_node->m_out_edges[i];
-    }
-  }
-  return NULL;
-}
-
-template <class CapType, class EdgePunishFun>
 typename IGraph<CapType, EdgePunishFun>::Edge* IGraph<CapType, EdgePunishFun>::CreateEdge(
-  Node* src_node, Node* dst_node, double punish_factor) {
-  Edge* edge = &src_node->m_out_edges[src_node->m_out_edges_num++];
-  Edge* rev_edge = &dst_node->m_out_edges[dst_node->m_out_edges_num++];
+  Node* src_node, Node* dst_node, double punish_factor, int edge_index, int rev_edge_index) {
+  Edge* edge = &src_node->m_out_edges[edge_index];
+  Edge* rev_edge = &dst_node->m_out_edges[rev_edge_index];
   CapType cap = punish_factor * m_epf(src_node->m_node_colour, dst_node->m_node_colour);
   edge->m_edge_capacity = cap;
   edge->m_rev_edge = rev_edge;
@@ -425,20 +435,40 @@ void IGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
   int x_node = coordinate - y_node * m_image_width;
   int arr_nodes_idx[NEIGHBOUR] = 
     NEIGHBOUR_ARR_INDEX(x_node, y_node, m_image_width, m_image_height);
+  if (y_node == 0) {
+    arr_nodes_idx[1] = coordinate;
+    arr_nodes_idx[3] = coordinate;
+  } else if (y_node == m_image_height - 1) {
+    arr_nodes_idx[5] = coordinate;
+    arr_nodes_idx[7] = coordinate;
+  }
+  if (x_node == 0) {
+    arr_nodes_idx[1] = coordinate;
+    arr_nodes_idx[7] = coordinate;
+  } else if (x_node == m_image_width - 1) {
+    arr_nodes_idx[3] = coordinate;
+    arr_nodes_idx[5] = coordinate;
+  }
   double punish_factor = 0;
   for (int i = 0; i < NEIGHBOUR; ++i) {
     if (cen_node->m_node_idx == arr_nodes_idx[i]) {
       continue;
     }
     Node* arr_node = &m_nodes[arr_nodes_idx[i]];
-    if (!GetEdge(cen_node, arr_node)) {
+    // // use it when active nodes are not enough
+    // if (!arr_node->m_in_actived) {
+    //   AddActiveNodeBack(arr_node);
+    // }
+    if (cen_node->m_out_edges[i].m_dst_node == NULL) {
       if (abs(arr_nodes_idx[i] - cen_node->m_node_idx) == 1 ||
           abs(arr_nodes_idx[i] - cen_node->m_node_idx) == m_image_width) {
         punish_factor = 1;
       } else {
         punish_factor = igraph_div_sqrt2;
       }
-      CreateEdge(cen_node, arr_node, punish_factor);
+      int rev_idx = i - 4 < 0 ? i + 4 : i - 4;
+      assert(arr_node->m_out_edges[rev_idx].m_dst_node == NULL);
+      CreateEdge(cen_node, arr_node, punish_factor, i, rev_idx);
     }
   }
   cen_node->m_is_gotten_all_edges = true;
@@ -457,7 +487,10 @@ void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
     return;
   }
   assert(orphan_node->m_is_gotten_all_edges);
-  for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+  for (int i = 0; i < NEIGHBOUR; ++i) {
+    if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+      continue;
+    }
     Edge* connected_edge = &orphan_node->m_out_edges[i];
     if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
       CapType capacity = orphan_node->m_node_state == SINK ?
@@ -517,7 +550,10 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
 
     // grow source tree and sink tree
     CreateOutEdges(at_node);
-    for (int i = 0; i < at_node->m_out_edges_num; ++i) {
+    for (int i = 0; i < NEIGHBOUR; ++i) {
+      if (at_node->m_out_edges[i].m_dst_node == NULL) {
+        continue;
+      }
       Edge* connected_edge = &at_node->m_out_edges[i];
       CapType capacity = at_node->m_node_state == SINK ?
                          connected_edge->m_rev_edge->m_edge_capacity :
@@ -633,7 +669,10 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
           int dist_min = (orphan_node->m_node_state == SOURCE) ?
                          m_global_source_dist : m_global_sink_dist;
           if (orphan_node->m_terminal_dist != dist_min) {
-            for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+            for (int i = 0; i < NEIGHBOUR; ++i) {
+              if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+                continue;
+              }
               Edge* connected_edge = &orphan_node->m_out_edges[i];
               Node* dst_node = connected_edge->m_dst_node;
               Edge* parent_edge = dst_node->m_parent_edge;
@@ -661,20 +700,15 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
             }
           }
           assert(!orphan_node->m_parent_edge);
-          for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+          for (int i = 0; i < NEIGHBOUR; ++i) {
+            if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+              continue;
+            }
             Edge* connected_edge = &orphan_node->m_out_edges[i];
             Node* dst_node = connected_edge->m_dst_node;
             if (orphan_node->m_node_state == dst_node->m_node_state &&
                 dst_node->m_parent_edge) {
-              if (dst_node->m_node_state == SOURCE) {
-                if (dst_node->m_terminal_dist == m_global_source_dist) {
-                  AddActiveSourceNodeBack(dst_node);
-                }
-              } else {
-                if (dst_node->m_terminal_dist == m_global_sink_dist) {
-                  AddActiveSinkNodeBack(dst_node);
-                }
-              }
+              AddActiveNodeBack(dst_node);
             }
           }
         }
