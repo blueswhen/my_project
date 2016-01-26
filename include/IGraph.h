@@ -255,16 +255,19 @@ class IGraph {
     }
     return false;
   }
-  void AddActiveNodeBack(Node* node) {
+  bool AddActiveNodeBack(Node* node) {
     if (node->m_node_state == SOURCE) {
       if (node->m_terminal_dist == m_global_source_dist) {
         AddActiveSourceNodeBack(node);
+        return true;
       }
     } else {
       if (node->m_terminal_dist == m_global_sink_dist) {
         AddActiveSinkNodeBack(node);
+        return true;
       }
     }
+    return false;
   }
   Node* GetActiveNode() {
     Node* active_node = NULL;
@@ -305,7 +308,6 @@ class IGraph {
 
   std::vector<Node> m_nodes;
   CapType m_flow;
-  // int m_actives_num;
   Node* m_first_orpn_node;
   Node* m_last_orpn_node;
   // ImageData<int>* m_marked_image;
@@ -332,7 +334,6 @@ template <class CapType, class EdgePunishFun>
 IGraph<CapType, EdgePunishFun>::IGraph(int max_nodes_number, int image_width, int image_height,
                                        EdgePunishFun epf, ImageData<int>* marked_image)
   : m_flow(0)
-  // , m_actives_num(0)
   , m_first_orpn_node(NULL)
   , m_last_orpn_node(m_first_orpn_node)
   // , m_marked_image(marked_image)
@@ -393,17 +394,13 @@ void IGraph<CapType, EdgePunishFun>::AddActiveNodes(int node_x, int node_y) {
   for (int i = 0; i < HALF_NEIGHBOUR; ++i) {
     Node* arr_node = &m_nodes[arr_index[i]];
     if (arr_index[i] < index && cen_node->m_node_state != arr_node->m_node_state) {
-      // if (cen_node->m_node_state == SOURCE) {
-      //   AddActiveSourceNodeBack(cen_node);
-      //   // AddActiveSinkNodeBack(arr_node);
-      // } else {
-      //   AddActiveSourceNodeBack(arr_node);
-      //   // AddActiveSinkNodeBack(cen_node);
-      // }
-      AddActiveNodeBack(cen_node);
-      AddActiveNodeBack(arr_node);
-      // m_actives_num++;
-      // break;
+      if (cen_node->m_node_state == SOURCE) {
+        AddActiveSourceNodeBack(cen_node);
+        AddActiveSinkNodeBack(arr_node);
+      } else {
+        AddActiveSourceNodeBack(arr_node);
+        AddActiveSinkNodeBack(cen_node);
+      }
     }
   }
 }
@@ -455,10 +452,10 @@ void IGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
       continue;
     }
     Node* arr_node = &m_nodes[arr_nodes_idx[i]];
-    // // use it when active nodes are not enough
-    // if (!arr_node->m_in_actived) {
-    //   AddActiveNodeBack(arr_node);
-    // }
+    // use it when active nodes are not enough
+    if (!arr_node->m_in_actived) {
+      AddActiveNodeBack(arr_node);
+    }
     if (cen_node->m_out_edges[i].m_dst_node == NULL) {
       if (abs(arr_nodes_idx[i] - cen_node->m_node_idx) == 1 ||
           abs(arr_nodes_idx[i] - cen_node->m_node_idx) == m_image_width) {
@@ -476,11 +473,7 @@ void IGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
 
 template <class CapType, class EdgePunishFun>
 void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
-  int dist_min = INIFINITE_DIST;
-  CapType max_node_cap = 0;
   Edge* connected_edge_min = NULL;
-  orphan_node->m_parent_edge = ORPHAN;
-
   if (orphan_node->m_terminal_dist == 1) {
     CreateOutEdges(orphan_node);
     orphan_node->m_parent_edge = NULL;
@@ -696,19 +689,7 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
               assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
               // orphan_node->m_timestamp = dst_node->m_timestamp;
               orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
-              continue;
-            }
-          }
-          assert(!orphan_node->m_parent_edge);
-          for (int i = 0; i < NEIGHBOUR; ++i) {
-            if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
-              continue;
-            }
-            Edge* connected_edge = &orphan_node->m_out_edges[i];
-            Node* dst_node = connected_edge->m_dst_node;
-            if (orphan_node->m_node_state == dst_node->m_node_state &&
-                dst_node->m_parent_edge) {
-              AddActiveNodeBack(dst_node);
+              AddActiveNodeBack(orphan_node);
             }
           }
         }

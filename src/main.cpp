@@ -31,6 +31,42 @@
 
 #define NO_UI
 
+void ScaleUpRegionArea(int center_x, int center_y, int factor,
+                       ImageData<int>* src_image, ImageData<int>* new_image) {
+  assert(new_image->IsEmpty());
+  int width = src_image->GetWidth();
+  int height = src_image->GetHeight();
+  int offset_x = width / factor / 2;
+  int offset_y = height / factor / 2;
+  new_image->CreateEmptyImage(2 * width, height);
+  int k = 0;
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      if (y == center_y - offset_y - 1 && x >= center_x - offset_x - 1 && x <= center_x + offset_x ||
+          y == center_y + offset_y && x >= center_x - offset_x - 1 && x <= center_x + offset_x || 
+          x == center_x - offset_x - 1 && y >= center_y - offset_y - 1 && y <= center_y + offset_y ||
+          x == center_x + offset_x && y >= center_y - offset_y - 1 && y <= center_y + offset_y) {
+        SET_PIXEL(new_image, y * 2 * width + x, GREEN);
+      } else {
+        int colour = GET_PIXEL(src_image, y * width + x);
+        SET_PIXEL(new_image, y * 2 * width + x, colour);
+      }
+      if (x >= center_x - offset_x && x < center_x + offset_x &&
+          y >= center_y - offset_y && y < center_y + offset_y) {
+        int new_y = (k / (2 * offset_x)) * factor;
+        int new_x = width + (k - (new_y / factor) * 2 * offset_x) * factor;
+        k++;
+        int colour = GET_PIXEL(src_image, y * width + x);
+        for (int yy = 0; yy < factor; ++yy) {
+          for (int xx = 0; xx < factor; ++xx) {
+            SET_PIXEL(new_image, (new_y + yy) * 2 * width + new_x + xx, colour);
+          }
+        }
+      }
+    }
+  }
+}
+
 int main(int argc, char** argv) {
   if (argc == 1) {
     printf("error: need a image\n");
@@ -119,7 +155,13 @@ int main(int argc, char** argv) {
     case 'm':
       // show marked image
       if (!sd.GetMarkedImage()->IsEmpty()) {
-        ui::ShowImage(*sd.GetMarkedImage());
+        int center_x = 660;
+        int center_y = 535;
+        int factor = 4;
+        ImageData<int> new_image;
+        ScaleUpRegionArea(center_x, center_y, factor, sd.GetMarkedImage(), &new_image);
+        ui::ShowImage(new_image);
+        // ui::ShowImage(*sd.GetMarkedImage());
       } else {
         printf("marked image has no data\n");
       }

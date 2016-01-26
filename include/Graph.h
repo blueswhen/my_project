@@ -8,12 +8,16 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <limits.h>
+#include <unistd.h>
 #include "include/CountTime.h"
+#include "include/ImageData.h"
 
 #define TERMINAL reinterpret_cast<Edge*>(1)
 #define ORPHAN reinterpret_cast<Edge*>(2)
 #define INIFINITE_DIST INT_MAX
 #define NEIGHBOUR 8
+#define T 50
+#define LT 10000
 
 namespace user {
 
@@ -25,7 +29,7 @@ class Graph {
     SINK,
     UNKNOWN
   };
-  Graph(int max_nodes_number, int max_edges_number);
+  Graph(int max_nodes_number, int max_edges_number, ImageData<int>* marked_image);
   void AddNode(int node_id, CapType source_capacity, CapType sink_capacity);
   void AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity);
   CapType MaxFlow();
@@ -130,11 +134,6 @@ class Graph {
       }
       if (m_first_at_source_node->m_next_active_source &&
           m_first_at_source_node->m_next_active_source->m_is_new_source_start) {
-        // if (m_first_at_source_node->m_next_active_source->m_node_state == SOURCE &&
-        //     m_first_at_source_node->m_next_active_source->m_parent_edge) {
-        //   assert(m_first_at_source_node->m_next_active_source->m_terminal_dist ==
-        //          m_global_source_dist);
-        // }
         if (m_global_sink_orphan_num <= m_global_source_orphan_num) {
           m_global_state = SINK;
           is_break = true;
@@ -211,11 +210,6 @@ class Graph {
       }
       if (m_first_at_sink_node->m_next_active_sink &&
           m_first_at_sink_node->m_next_active_sink->m_is_new_sink_start) {
-        // if (m_first_at_sink_node->m_next_active_sink->m_node_state == SINK &&
-        //     m_first_at_sink_node->m_next_active_sink->m_parent_edge) {
-        //   assert(m_first_at_sink_node->m_next_active_sink->m_terminal_dist ==
-        //          m_global_sink_dist);
-        // }
         if (m_global_source_orphan_num <= m_global_sink_orphan_num) {
           m_global_state = SOURCE;
           is_break = true;
@@ -241,6 +235,20 @@ class Graph {
   bool IsActiveSinkEmpty() {
     if (m_first_at_sink_node == NULL && m_last_at_sink_node == NULL) {
       return true;
+    }
+    return false;
+  }
+  bool AddActiveNodeBack(Node* at_node) {
+    if (at_node->m_node_state == SOURCE) {
+      if (at_node->m_terminal_dist == m_global_source_dist) {
+        AddActiveSourceNodeBack(at_node);
+        return true;
+      }
+    } else {
+      if (at_node->m_terminal_dist == m_global_sink_dist) {
+        AddActiveSinkNodeBack(at_node);
+        return true;
+      }
     }
     return false;
   }
@@ -277,11 +285,12 @@ class Graph {
   NodeState m_global_state;
   int m_global_source_orphan_num;
   int m_global_sink_orphan_num;
+  // ImageData<int>* m_marked_image;
   CapType m_flow;
 };
 
 template <class CapType>
-Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
+Graph<CapType>::Graph(int max_nodes_number, int max_edges_number, ImageData<int>* marked_image)
   : m_nodes(std::vector<Node>(max_nodes_number))
   , m_first_at_source_node(NULL)
   , m_last_at_source_node(NULL)
@@ -297,6 +306,7 @@ Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
   , m_global_state(SOURCE)
   , m_global_source_orphan_num(0)
   , m_global_sink_orphan_num(0)
+  // , m_marked_image(marked_image)
   , m_flow(0) {}
 
 template <class CapType>
@@ -390,8 +400,11 @@ void Graph<CapType>::Augment(Edge* meet_edge) {
 
 template <class CapType>
 void Graph<CapType>::FindNewPath(Node* orphan_node) {
-  int dist_min = INIFINITE_DIST;
   Edge* connected_edge_min = NULL;
+  if (orphan_node->m_terminal_dist == 1) {
+    orphan_node->m_parent_edge = NULL;
+    return;
+  }
 
   for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
     Edge* connected_edge = &orphan_node->m_out_edges[i];
@@ -399,7 +412,6 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
       CapType capacity = orphan_node->m_node_state == SINK ?
                          connected_edge->m_edge_capacity :
                          connected_edge->m_rev_edge->m_edge_capacity;
-#if 1
       if (!capacity || connected_edge->m_dst_node->m_terminal_dist !=
           orphan_node->m_terminal_dist - 1) {
         continue;
@@ -410,50 +422,6 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
                connected_edge_min->m_dst_node->m_terminal_dist + 1);
         break;
       }
-#else
-      if (!capacity) {
-        continue;
-      }
-      Node* dst_node = connected_edge->m_dst_node;
-      Edge* parent_edge = dst_node->m_parent_edge;
-      if (parent_edge) {
-        int dist = 0;
-        // CapType node_cap = 0;
-        while (true) {
-          if (dst_node->m_timestamp == m_global_timestamp) {
-            dist += dst_node->m_terminal_dist;
-            break;
-          }
-          parent_edge = dst_node->m_parent_edge;
-          dist++;
-          if (parent_edge == TERMINAL) {
-            dst_node->m_timestamp = m_global_timestamp;
-            dst_node->m_terminal_dist = 1;
-            // node_cap = dst_node->m_residue_capacity > 0 ?
-            //   dst_node->m_residue_capacity : -dst_node->m_residue_capacity;
-            break;
-          }
-          if (parent_edge == ORPHAN) {
-            dist = INIFINITE_DIST;
-            break;
-          }
-          assert(parent_edge);
-          dst_node = parent_edge->m_dst_node;
-        }
-        if (dist < INIFINITE_DIST) {
-          if (dist < dist_min) {
-            connected_edge_min = connected_edge;
-            dist_min = dist;
-          }
-          for (dst_node = connected_edge->m_dst_node;
-               dst_node->m_timestamp != m_global_timestamp;
-               dst_node = dst_node->m_parent_edge->m_dst_node) {
-            dst_node->m_timestamp = m_global_timestamp;
-            dst_node->m_terminal_dist = dist--;
-          }
-        }
-      }
-#endif
     }
   }
   orphan_node->m_parent_edge = connected_edge_min;
@@ -579,7 +547,6 @@ CapType Graph<CapType>::MaxFlow() {
             AddOrphanNode(child);
           }
           orphan_node->m_first_child_node = NULL;
-          
 
           int dist_min = (orphan_node->m_node_state == SOURCE) ?
                          m_global_source_dist : m_global_sink_dist;
@@ -608,15 +575,7 @@ CapType Graph<CapType>::MaxFlow() {
               assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
               // orphan_node->m_timestamp = dst_node->m_timestamp;
               orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
-              if (orphan_node->m_node_state == SOURCE) {
-                if (orphan_node->m_terminal_dist == m_global_source_dist) {
-                  AddActiveSourceNodeBack(orphan_node);
-                }
-              } else {
-                if (orphan_node->m_terminal_dist == m_global_sink_dist) {
-                  AddActiveSinkNodeBack(orphan_node);
-                }
-              }
+              AddActiveNodeBack(orphan_node);
             }
           }
         }
