@@ -147,19 +147,19 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   int vtx_count = width * height;
   int edge_count = 4 * vtx_count - 3 * (width + height) + 2;
 
-#define ADD_EDGE 0
-#define MY_MAXFLOW 0
+#define ADD_EDGE 1
+#define MY_MAXFLOW 1
 #define B_MAXFLOW 0
 #define IB_MAXFLOW 0
 #define MY_IB_MAXFLOW 0
 #define PR_MAXFLOW 0
 #define OPENCV_MAXFLOW 0
-#define IGRAPH 1
+#define IGRAPH 0
 #define FGRAPH 0
 #define IFGRAPH 0
 
 #if MY_MAXFLOW
-  user::Graph<double> mygraph(vtx_count, 2 * edge_count);
+  user::Graph<double> mygraph(vtx_count, 2 * edge_count, marked_image);
 #endif
 
 #if B_MAXFLOW
@@ -171,10 +171,9 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
 #elif IB_MAXFLOW
-  // IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
-  IBFSGraph graph;
+  IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
+  // IBFSGraph graph;
   graph.initSize(vtx_count, edge_count);
-  // graph.initSize(vtx_count, width, height, EdgePunishItem);
 #elif PR_MAXFLOW
   PRGraph<double> graph(vtx_count, 2 * edge_count, width, height, marked_image);
 #endif
@@ -412,8 +411,10 @@ ct.PrintTime();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int vtx0 = BUILD_VTX(y * width + x);
+      // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
+      //     mygraph.IsBelongToSource(vtx0)) {
       if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-          mygraph.IsBelongToSource(vtx0)) {
+          igraph.IsBelongToSource(vtx0)) {
         printf("error pixel\n");
       }
     }

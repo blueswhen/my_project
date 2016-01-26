@@ -6,7 +6,6 @@
 #include <algorithm>
 #include <assert.h>
 
-#define IBDEBUG(X) fprintf(stdout, X"\n"); fflush(stdout)
 #define IB_ORPHANS_END   ( (Node *) 1 )
 
 #define ENABLE_DYNAMIC_EDGE
