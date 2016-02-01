@@ -3,101 +3,60 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <algorithm>
-#include "include/CountTime.h"
 
-#define IBDEBUG(X) fprintf(stdout, X"\n"); fflush(stdout)
-#define IB_ORPHANS_END   ( (Node *) 1 )
-
-// #define ENABLE_DYNAMIC_EDGE
-
-#define HALF_NEIGHBOUR 4
-#define NEIGHBOUR 8
-#define HALF_NEIGHBOUR_ARR_INDEX FOUR_ARR_INDEX
-#define NEIGHBOUR_ARR_INDEX EIGHT_ARR_INDEX
-typedef double (*EPF)(int src_node_colour, int dst_node_colour);
-
-const double ibgraph_div_sqrt2 = 1 / sqrt(2.0f);
-
-#define FOUR_ARR_INDEX(node_x, node_y, image_width, image_height) \
-{ \
-  node_y * image_width + std::max(0, node_x - 1), \
-  std::max(node_y - 1, 0) * image_width + std::max(0, node_x - 1), \
-  std::max(node_y - 1, 0) * image_width + node_x, \
-  std::max(node_y - 1, 0) * image_width + std::min(image_width - 1, node_x + 1) \
-}
-
-#define EIGHT_ARR_INDEX(node_x, node_y, image_width, image_height) \
-{ \
-  node_y * image_width + std::max(0, node_x - 1), \
-  std::max(node_y - 1, 0) * image_width + std::max(0, node_x - 1), \
-  std::max(node_y - 1, 0) * image_width + node_x, \
-  std::max(node_y - 1, 0) * image_width + std::min(image_width - 1, node_x + 1), \
-  node_y * image_width + std::min(image_width - 1, node_x + 1), \
-  std::min(node_y + 1, image_height - 1) * image_width + std::min(image_width - 1, node_x + 1), \
-  std::min(node_y + 1, image_height - 1) * image_width + node_x, \
-  std::min(node_y + 1, image_height - 1) * image_width + std::max(0, node_x - 1) \
-}
+#define IB_EXCESSES 1
+#define IB_ALLOC_INIT_LEVELS 4096
 
 class IBFSGraph
 {
 public:
-  IBFSGraph();
+  enum IBFSInitMode { IB_INIT_FAST, IB_INIT_COMPACT };
+  IBFSGraph(IBFSInitMode initMode);
   ~IBFSGraph();
   void initSize(int numNodes, int numEdges);
   void addEdge(int nodeIndexFrom, int nodeIndexTo, double capacity, double reverseCapacity);
-  void addNode(int nodeIndex, double capacityFromSource, double capacityToSink);
+  void addNode(int nodeIndex, double capFromSource, double capToSink);
+  struct Arc;
   void initGraph();
   double computeMaxFlow();
-  bool isNodeOnSrcSide(int nodeIndex);
-#ifdef ENABLE_DYNAMIC_EDGE
-  void initSize(int numNodes, int width, int height, EPF epf);
-  void addNode(int nodeIndex, double capacityFromSource, double capacityToSink, int node_colour);
-  void AddActiveNodes(int node_x, int node_y);
-#endif
+  double computeMaxFlow(bool allowIncrements);
+  int isNodeOnSrcSide(int nodeIndex, int freeNodeValue = 0);
 
-  // inline int getFlow() {
-  //   return m_flow;
-  // }
-  // inline int getNumNodes() {
-  //   return m_nodeEnd-m_nodes;
-  // }
-  // inline int getNumArcs() {
-  //   return m_arcEnd-m_arcs;
-  // }
 
-private:
   struct Node;
-  struct Arc;
 
   struct Arc
   {
     Node*    head;
     Arc*    rev;
-    bool    isRevResidual;
+    int      isRevResidual :1;
     double  rCap;
   };
 
-  class Node
+  struct Node
   {
-  public:
+    int      id;
+    int      lastAugTimestamp:30;
+    int      isParentCurr:1;
+    int      isIncremental:1;
     Arc      *firstArc;
     Arc      *parent;
     Node    *firstSon;
     Node    *nextPtr;
     int      label;  // label > 0: distance from s, label < 0: -distance from t
-    double  excess;   // excess > 0: capacity from s, excess < 0: -capacity to t
-
-    bool m_is_active;
-    int m_node_idx;
-#ifdef ENABLE_DYNAMIC_EDGE
-    Arc m_out_edges[NEIGHBOUR];
-    bool m_is_gotten_all_edges;
-    int m_out_edges_num;
-    int m_node_colour;
-#endif
-
+    double   excess;   // excess > 0: capacity from s, excess < 0: -capacity to t
   };
+
+private:
+  Arc *arcIter;
+  void augment(Arc *bridge);
+  template<bool sTree> int augmentPath(Node *x, double push);
+  template<bool sTree> int augmentExcess(Node *x, double push);
+  template<bool sTree> void augmentExcesses();
+  template <bool sTree> void adoption(int fromLevel, bool toTop);
+  template <bool dirS> void growth();
+
+  double computeMaxFlow(bool trackChanges, bool initialDirS);
 
   class ActiveList
   {
@@ -110,9 +69,13 @@ private:
       list = new Node*[numNodes];
       len = 0;
     }
+    inline void init(Node **mem) {
+      list = mem;
+      len = 0;
+    }
     inline void free() {
       if (list != NULL) {
-        delete list;
+        delete []list;
         list = NULL;
       }
     }
@@ -123,6 +86,13 @@ private:
       list[len] = x;
       len++;
     }
+    inline Node* pop() {
+      len--;
+      return list[len];
+    }
+    inline Node** getEnd() {
+      return list+len;
+    }
     inline static void swapLists(ActiveList *a, ActiveList *b) {
       ActiveList tmp = (*a);
       (*a) = (*b);
@@ -132,114 +102,234 @@ private:
     int len;
   };
 
+
+  class BucketsOneSided
+  {
+  public:
+    inline BucketsOneSided() {
+      buckets = NULL;
+      maxBucket = 0;
+      allocLevels = 0;
+    }
+    inline void init(int numNodes) {
+      allocLevels = numNodes/8;
+      if (allocLevels < IB_ALLOC_INIT_LEVELS) {
+        if (numNodes < IB_ALLOC_INIT_LEVELS) allocLevels = numNodes;
+        else allocLevels = IB_ALLOC_INIT_LEVELS;
+      }
+      buckets = new Node*[allocLevels+1];
+      memset(buckets, 0, sizeof(Node*)*(allocLevels+1));
+      maxBucket = 0;
+    }
+    inline void allocate(int numLevels) {
+      if (numLevels > allocLevels) {
+        allocLevels <<= 1;
+        Node **alloc = new Node*[allocLevels+1];
+        memset(alloc, 0, sizeof(Node*)*(allocLevels+1));
+        delete []buckets;
+        buckets = alloc;
+      }
+    }
+    inline void free() {
+      if (buckets != NULL) {
+        delete []buckets;
+        buckets = NULL;
+      }
+    }
+    template <bool sTree> inline void add(Node* x) {
+      int bucket = (sTree ? (x->label) : (-x->label));
+      x->nextPtr = buckets[bucket];
+      buckets[bucket] = x;
+      if (bucket > maxBucket) maxBucket = bucket;
+    }
+    inline Node* popFront(int bucket) {
+      Node *x;
+      if ((x = buckets[bucket]) == NULL) return NULL;
+      buckets[bucket] = x->nextPtr;
+      return x;
+    }
+
+    Node **buckets;
+    int maxBucket;
+    int allocLevels;
+  };
+
+#define IB_PREVPTR_EXCESS(x) (ptrs[(((x)->id)<<1) + 1])
+#define IB_NEXTPTR_EXCESS(x) (ptrs[((x)->id)<<1])
+
+  class ExcessBuckets
+  {
+  public:
+    inline ExcessBuckets() {
+      buckets = ptrs = NULL;
+      allocLevels = maxBucket = minBucket = -1;
+    }
+    inline void init(int numNodes) {
+      allocLevels = numNodes/8;
+      if (allocLevels < IB_ALLOC_INIT_LEVELS) {
+        if (numNodes < IB_ALLOC_INIT_LEVELS) allocLevels = numNodes;
+        else allocLevels = IB_ALLOC_INIT_LEVELS;
+      }
+      buckets = new Node*[allocLevels+1];
+      memset(buckets, 0, sizeof(Node*)*(allocLevels+1));
+      ptrs = new Node*[2 * numNodes];
+      memset(ptrs, 0, sizeof(Node*)*(2 * numNodes));
+      reset();
+    }
+    inline void allocate(int numLevels) {
+      if (numLevels > allocLevels) {
+        allocLevels <<= 1;
+        Node **alloc = new Node*[allocLevels+1];
+        memset(alloc, 0, sizeof(Node*)*(allocLevels+1));
+        //memcpy(alloc, buckets, sizeof(Node*)*(allocLevels+1));
+        delete []buckets;
+        buckets = alloc;
+      }
+    }
+    inline void free() {
+      if (buckets != NULL) {
+        delete []buckets;
+        buckets = NULL;
+      }
+      if (ptrs != NULL) {
+        delete [] ptrs;
+        ptrs = NULL;
+      }
+    }
+
+    template <bool sTree> inline void add(Node* x) {
+      int bucket = (sTree ? (x->label) : (-x->label));
+      IB_NEXTPTR_EXCESS(x) = buckets[bucket];
+      if (buckets[bucket] != NULL) {
+        IB_PREVPTR_EXCESS(buckets[bucket]) = x;
+      }
+      buckets[bucket] = x;
+      if (bucket > maxBucket) maxBucket = bucket;
+      if (bucket != 0 && bucket < minBucket) minBucket = bucket;
+    }
+    inline Node* popFront(int bucket) {
+      Node *x = buckets[bucket];
+      if (x == NULL) return NULL;
+      buckets[bucket] = IB_NEXTPTR_EXCESS(x);
+      return x;
+    }
+    template <bool sTree> inline void remove(Node *x) {
+      int bucket = (sTree ? (x->label) : (-x->label));
+      if (buckets[bucket] == x) {
+        buckets[bucket] = IB_NEXTPTR_EXCESS(x);
+      } else {
+        IB_NEXTPTR_EXCESS(IB_PREVPTR_EXCESS(x)) = IB_NEXTPTR_EXCESS(x);
+        if (IB_NEXTPTR_EXCESS(x) != NULL) IB_PREVPTR_EXCESS(IB_NEXTPTR_EXCESS(x)) = IB_PREVPTR_EXCESS(x);
+      }
+    }
+    inline void incMaxBucket(int bucket) {
+      if (maxBucket < bucket) maxBucket = bucket;
+    }
+    inline bool empty() {
+      return maxBucket < minBucket;
+    }
+    inline void reset() {
+      maxBucket = 0;
+      minBucket = -1 ^ (1<<31);
+    }
+
+    Node **buckets;
+    Node **ptrs;
+    int maxBucket;
+    int minBucket;
+    int allocLevels;
+  };
+
   // members
-  Node  *m_nodes, *m_nodeEnd;
-  Arc    *m_arcs, *m_arcEnd;
-  int   m_numNodes;
-  double m_flow;
-  double m_time;
-  int m_count;
-  CountTime m_ct;
-  int m_orphan_count;
-  int m_path;
-  unsigned int m_uniqOrphansS, m_uniqOrphansT;
-  Node* m_orphanFirst;
-  Node* m_orphanLast;
-  int m_topLevelS, m_topLevelT;
-  ActiveList m_active0, m_activeS1, m_activeT1;
-
-  void augment(Arc *bridge);
-  template<bool sTree> void augmentTree(Node *x, double bottleneck);
-  template <bool sTree> void adoption();
-  template <bool dirS> void growth();
-
+  Node  *nodes, *nodeEnd;
+  Arc    *arcs, *arcEnd;
+  Node  **ptrs;
+  int   numNodes;
+  double flow;
+  short   augTimestamp;
+  int topLevelS, topLevelT;
+  ActiveList active0, activeS1, activeT1;
+  BucketsOneSided orphanBuckets;
+  ExcessBuckets excessBuckets;
+  //
+  // Orphans
+  //
+  unsigned int uniqOrphansS, uniqOrphansT;
+  template <bool sTree> inline void orphanFree(Node *x) {
+    if (IB_EXCESSES && x->excess) {
+      x->label = (sTree ? -topLevelT : topLevelS);
+      if (sTree) activeT1.add(x);
+      else activeS1.add(x);
+      x->isParentCurr = 0;
+    } else {
+      x->label = 0;
+    }
+  }
 
   //
   // Initialization
   //
   struct TmpEdge
   {
-    Node*    head;
-    Node*    tail;
-    double   cap;
-    double  revCap;
+    int    head;
+    int    tail;
+    double cap;
+    double revCap;
   };
   struct TmpArc
   {
     TmpArc    *rev;
     double cap;
   };
-  char  *m_memArcs;
-  TmpEdge  *m_tmpEdges, *m_tmpEdgeLast;
-  TmpArc  *m_tmpArcs;
+  char  *memArcs;
+  TmpEdge  *tmpEdges, *tmpEdgeLast;
+  TmpArc  *tmpArcs;
+  bool isInitializedGraph() {
+    return memArcs != NULL;
+  }
+  IBFSInitMode initMode;
+  int m_orphan_count;
+  int m_path;
   void initGraphFast();
-  void initGraphCompact();
-#ifdef ENABLE_DYNAMIC_EDGE
-  Arc* GetEdge(Node* src_node, Node* dst_node);
-  Arc* CreateEdge(Node* src_node, Node* dst_node, double punish_factor);
-  void CreateOutEdges(Node* cen_node);
-#endif
-
-#ifdef ENABLE_DYNAMIC_EDGE
-  int m_image_width;
-  int m_image_height;
-  EPF m_epf;
-#endif
+  void initNodes();
 };
 
-inline void IBFSGraph::addNode(int nodeIndex, double capacitySource, double capacitySink)
+inline void IBFSGraph::addNode(int nodeIndex, double capSource, double capSink)
 {
-  if (capacitySource < capacitySink) {
-    m_flow += capacitySource;
+  int f = nodes[nodeIndex].excess;
+  if (f > 0) {
+    capSource += f;
   } else {
-    m_flow += capacitySink;
+    capSink -= f;
   }
-  m_nodes[nodeIndex].excess = capacitySource - capacitySink;
-  m_nodes[nodeIndex].m_node_idx = nodeIndex;
-  m_nodes[nodeIndex].m_is_active = false;
-}
-
-#ifdef ENABLE_DYNAMIC_EDGE
-inline void IBFSGraph::addNode(int nodeIndex, double capacitySource, double capacitySink, int node_colour)
-{
-  addNode(nodeIndex, capacitySource, capacitySink);
-  if (m_nodes[nodeIndex].excess == 0) {
-    m_nodes[nodeIndex].label = m_numNodes;
-  } else if (m_nodes[nodeIndex].excess > 0) {
-    m_nodes[nodeIndex].label = 1;
-    // m_activeS1.add(&m_nodes[nodeIndex]);
+  if (capSource < capSink) {
+    flow += capSource;
   } else {
-    m_nodes[nodeIndex].label = -1;
-    // m_activeT1.add(&m_nodes[nodeIndex]);
+    flow += capSink;
   }
-  m_nodes[nodeIndex].m_node_colour = node_colour;
-  m_nodes[nodeIndex].m_is_gotten_all_edges = false;
-  m_nodes[nodeIndex].m_out_edges_num = 0;
-  m_nodes[nodeIndex].m_node_idx = nodeIndex;
-  m_nodes[nodeIndex].m_is_active = false;
+  nodes[nodeIndex].excess = capSource - capSink;
+  nodes[nodeIndex].id = nodeIndex;
 }
-#endif
 
 inline void IBFSGraph::addEdge(int nodeIndexFrom, int nodeIndexTo, double capacity, double reverseCapacity)
 {
-  m_tmpEdgeLast->tail = m_nodes + nodeIndexFrom;
-  m_tmpEdgeLast->head = m_nodes + nodeIndexTo;
-  m_tmpEdgeLast->cap = capacity;
-  m_tmpEdgeLast->revCap = reverseCapacity;
-  m_tmpEdgeLast++;
+  tmpEdgeLast->tail = nodeIndexFrom;
+  tmpEdgeLast->head = nodeIndexTo;
+  tmpEdgeLast->cap = capacity;
+  tmpEdgeLast->revCap = reverseCapacity;
+  tmpEdgeLast++;
 
   // use label as a temporary storage
   // to count the out degree of nodes
-  m_nodes[nodeIndexFrom].label++;
-  m_nodes[nodeIndexTo].label++;
+  nodes[nodeIndexFrom].label++;
+  nodes[nodeIndexTo].label++;
 }
 
-inline bool IBFSGraph::isNodeOnSrcSide(int nodeIndex)
+inline int IBFSGraph::isNodeOnSrcSide(int nodeIndex, int freeNodeValue)
 {
-  if (m_nodes[nodeIndex].label == m_numNodes || m_nodes[nodeIndex].label == 0) {
-    return m_activeT1.len == 0;
+  if (nodes[nodeIndex].label == 0) {
+    return freeNodeValue;
   }
-  return (m_nodes[nodeIndex].label > 0);
+  return (nodes[nodeIndex].label > 0 ? 1 : 0);
 }
-
 #endif

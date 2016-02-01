@@ -139,6 +139,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define IS_BUILD_EDGE(index) \
   (graph_vtx_map != NULL && graph_vtx_map->find(index) != graph_vtx_map->end())
 
+  // CountTime ct_;
+  double time = 0;
   int width = source_image.GetWidth();
   int height = source_image.GetHeight();
   if (marked_image->IsEmpty()) {
@@ -198,7 +200,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   double e1[2] = {0, 0};
   const double lamda = LAMDA;
   const double lamda_div_sqrt2 = LAMDA / std::sqrt(2.0f);
-  double time = 0;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
@@ -261,6 +262,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       ifgraph.AddActiveNodes(x, y);
 #endif
 
+  // ct_.ContBegin();
 #if ADD_EDGE
       // 8 neighbours
       if ((graph_vtx_map == NULL && x > 0) || IS_BUILD_EDGE(index - 1)) {
@@ -344,8 +346,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #endif
       }
 #endif
+// ct_.ContEnd();
+// time += ct_.ContResult();
     }
   }
+  // printf("time = %f\n", 1000 * time);
 
 #if 1
 CountTime ct;
@@ -411,10 +416,10 @@ ct.PrintTime();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int vtx0 = BUILD_VTX(y * width + x);
-      // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-      //     mygraph.IsBelongToSource(vtx0)) {
       if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-          igraph.IsBelongToSource(vtx0)) {
+          mygraph.IsBelongToSource(vtx0)) {
+      // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
+      //     igraph.IsBelongToSource(vtx0)) {
         printf("error pixel\n");
       }
     }
@@ -426,7 +431,7 @@ ct.PrintTime();
     for (int x = 0; x < width; ++x) {
       int vtx0 = BUILD_VTX(y * width + x);
       // if (graph.isNodeOnSrcSide(vtx0) != ibgraph.isNodeOnSrcSide(vtx0)) {
-      if (igraph.IsBelongToSource(vtx0) != ibgraph.isNodeOnSrcSide(vtx0)) {
+      if (igraph.IsBelongToSource(vtx0) != graph.isNodeOnSrcSide(vtx0)) {
         printf("error pixel, x = %d, y = %d\n", x, y);
       }
     }
