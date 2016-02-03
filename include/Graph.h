@@ -21,6 +21,20 @@
 
 #define EIBFS
 
+#define REMOVE_SIBLING(x, tmp) \
+  { (tmp) = (x)->m_parent_edge->m_dst_node->m_first_child_node; \
+  if ((tmp) == (x)) { \
+    (x)->m_parent_edge->m_dst_node->m_first_child_node = (x)->m_next_child_node; \
+  } else { \
+    for (; (tmp)->m_next_child_node != (x); (tmp) = (tmp)->m_next_child_node); \
+    (tmp)->m_next_child_node = (x)->m_next_child_node; \
+  } }
+
+#define ADD_SIBLING(x, parentNode) \
+  { (x)->m_next_child_node = (parentNode)->m_first_child_node; \
+  (parentNode)->m_first_child_node = (x); \
+  }
+
 namespace user {
 
 template <class CapType>
@@ -32,12 +46,6 @@ class Graph {
     UNKNOWN
   };
   Graph(int max_nodes_number, int max_edges_number, ImageData<int>* marked_image);
-#ifdef EIBFS
-  ~Graph() {
-    orphanBuckets.free();
-    excessBuckets.free();
-  }
-#endif
   void AddNode(int node_id, CapType source_capacity, CapType sink_capacity);
   void AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity);
   CapType MaxFlow();
@@ -74,9 +82,7 @@ class Graph {
       , m_is_new_source_start(false)
       , m_is_new_sink_start(false)
       , m_out_edges_num(0)
-#ifdef EIBFS
-      , lastAugTimestamp(0)
-#endif
+      , m_in_queue(false)
       , m_id(0) {}
     CapType m_excess;
     NodeState m_node_state;
@@ -94,9 +100,7 @@ class Graph {
     int m_terminal_dist;
     Edge m_out_edges[NEIGHBOUR];
     int m_out_edges_num;
-#ifdef EIBFS
-    int lastAugTimestamp;
-#endif
+    bool m_in_queue;
     int m_id;
   };
 
@@ -281,170 +285,20 @@ class Graph {
   }
   void Augment(Edge* meet_edge);
   void FindNewPath(Node* orphan_node);
+  void Adoption();
 
-#ifdef EIBFS
-
-#define IB_ALLOC_INIT_LEVELS 4096
-
-  class BucketsOneSided
-  {
-  public:
-    inline BucketsOneSided() {
-      buckets = NULL;
-      maxBucket = 0;
-      allocLevels = 0;
-    }
-    inline void init(int numNodes) {
-      allocLevels = numNodes/8;
-      if (allocLevels < IB_ALLOC_INIT_LEVELS) {
-        if (numNodes < IB_ALLOC_INIT_LEVELS) allocLevels = numNodes;
-        else allocLevels = IB_ALLOC_INIT_LEVELS;
-      }
-      buckets = new Node*[allocLevels+1];
-      memset(buckets, 0, sizeof(Node*)*(allocLevels+1));
-      maxBucket = 0;
-    }
-    inline void allocate(int numLevels) {
-      if (numLevels > allocLevels) {
-        allocLevels <<= 1;
-        Node **alloc = new Node*[allocLevels+1];
-        memset(alloc, 0, sizeof(Node*)*(allocLevels+1));
-        delete []buckets;
-        buckets = alloc;
-      }
-    }
-    inline void free() {
-      if (buckets != NULL) {
-        delete []buckets;
-        buckets = NULL;
-      }
-    }
-    inline void add(Node* x) {
-      int bucket = x->m_terminal_dist;
-      x->m_next_child_node = buckets[bucket];
-      buckets[bucket] = x;
-      if (bucket > maxBucket) maxBucket = bucket;
-    }
-    inline Node* popFront(int bucket) {
-      Node *x;
-      if ((x = buckets[bucket]) == NULL) return NULL;
-      buckets[bucket] = x->m_next_child_node;
-      return x;
-    }
-
-    Node **buckets;
-    int maxBucket;
-    int allocLevels;
-  };
-
-#define IB_PREVPTR_EXCESS(x) (ptrs[(((x)->m_id)<<1) + 1])
-#define IB_NEXTPTR_EXCESS(x) (ptrs[((x)->m_id)<<1])
-  class ExcessBuckets
-  {
-  public:
-    inline ExcessBuckets() {
-      buckets = ptrs = NULL;
-      allocLevels = maxBucket = minBucket = -1;
-    }
-    inline void init(int numNodes) {
-      allocLevels = numNodes/8;
-      if (allocLevels < IB_ALLOC_INIT_LEVELS) {
-        if (numNodes < IB_ALLOC_INIT_LEVELS) allocLevels = numNodes;
-        else allocLevels = IB_ALLOC_INIT_LEVELS;
-      }
-      buckets = new Node*[allocLevels+1];
-      memset(buckets, 0, sizeof(Node*)*(allocLevels+1));
-      ptrs = new Node*[2*numNodes];
-      memset(ptrs, 0, sizeof(Node*)*(2*numNodes));
-      reset();
-    }
-    inline void allocate(int numLevels) {
-      if (numLevels > allocLevels) {
-        allocLevels <<= 1;
-        Node **alloc = new Node*[allocLevels+1];
-        memset(alloc, 0, sizeof(Node*)*(allocLevels+1));
-        delete [] buckets;
-        buckets = alloc;
-      }
-    }
-    inline void free() {
-      if (buckets != NULL) {
-        delete []buckets;
-        buckets = NULL;
-      }
-      if (ptrs != NULL) {
-        delete [] ptrs;
-        ptrs = NULL;
-      }
-    }
-
-    inline void add(Node* x) {
-      int bucket = x->m_terminal_dist;
-      IB_NEXTPTR_EXCESS(x) = buckets[bucket];
-      if (buckets[bucket] != NULL) {
-        IB_PREVPTR_EXCESS(buckets[bucket]) = x;
-      }
-      buckets[bucket] = x;
-      if (bucket > maxBucket) maxBucket = bucket;
-      if (bucket != 0 && bucket < minBucket) minBucket = bucket;
-    }
-    inline Node* popFront(int bucket) {
-      Node *x = buckets[bucket];
-      if (x == NULL) return NULL;
-      buckets[bucket] = IB_NEXTPTR_EXCESS(x);
-      return x;
-    }
-    inline void remove(Node *x) {
-      int bucket = x->m_terminal_dist;
-      assert(buckets[bucket]);
-      if (buckets[bucket] == x) {
-        buckets[bucket] = IB_NEXTPTR_EXCESS(x);
-      } else {
-        assert(IB_PREVPTR_EXCESS(x));
-        IB_NEXTPTR_EXCESS(IB_PREVPTR_EXCESS(x)) = IB_NEXTPTR_EXCESS(x);
-        if (IB_NEXTPTR_EXCESS(x) != NULL) IB_PREVPTR_EXCESS(IB_NEXTPTR_EXCESS(x)) = IB_PREVPTR_EXCESS(x);
-      }
-    }
-    inline void incMaxBucket(int bucket) {
-      if (maxBucket < bucket) maxBucket = bucket;
-    }
-    inline bool empty() {
-      return maxBucket < minBucket;
-    }
-    inline void reset() {
-      maxBucket = 0;
-      minBucket = -1 ^ (1<<31);
-    }
-
-    Node **buckets;
-    Node **ptrs;
-    int maxBucket;
-    int minBucket;
-    int allocLevels;
-  };
-#endif
 #ifdef EIBFS
   inline void orphanFree(Node *x) {
+    assert(!x->m_parent_edge);
     if (x->m_excess) {
       x->m_terminal_dist = (x->m_node_state == SOURCE ? m_global_sink_dist : m_global_source_dist);
       x->m_node_state = x->m_node_state == SOURCE ? SINK : SOURCE;
       x->m_parent_edge = TERMINAL;
-      if (x->m_node_state == SOURCE) {
-        AddActiveSourceNodeBack(x);
-      } else {
-        AddActiveSinkNodeBack(x);
-      }
-      // if (sTree) activeT1.add(x);
-      // else activeS1.add(x);
-      // x->isParentCurr = 0;
-    } else {
-      x->m_parent_edge = NULL;
-      // x->label = 0;
+      AddActiveNodeBack(x);
     }
   }
-  int augmentExcess(Node *x, double push);
+  void augmentExcess(Node *x, double push);
   void augmentExcesses();
-  void adoption(int fromLevel, bool toTop);
 #endif
 
   std::vector<Node> m_nodes;
@@ -466,9 +320,7 @@ class Graph {
   int m_global_sink_orphan_num;
   // ImageData<int>* m_marked_image;
 #ifdef EIBFS
-  int augTimestamp;
-  BucketsOneSided orphanBuckets;
-  ExcessBuckets excessBuckets;
+  std::queue<Node*> m_excess_queue;
 #endif
   CapType m_flow;
 };
@@ -491,15 +343,7 @@ Graph<CapType>::Graph(int max_nodes_number, int max_edges_number, ImageData<int>
   , m_global_source_orphan_num(0)
   , m_global_sink_orphan_num(0)
   // , m_marked_image(marked_image)
-#ifdef EIBFS
-  , augTimestamp(0)
-#endif
-  , m_flow(0) {
-#ifdef EIBFS
-    excessBuckets.init(max_nodes_number);
-    orphanBuckets.init(max_nodes_number);
-#endif
-  }
+  , m_flow(0) {}
 
 template <class CapType>
 void Graph<CapType>::AddNode(int node_id, CapType source_capacity, CapType sink_capacity) {
@@ -596,11 +440,11 @@ void Graph<CapType>::Augment(Edge* bridge) {
   Node *x, *y;
   Edge *a;
   double bottleneck, bottleneckT, bottleneckS;
-  int minOrphanLevel;
   bool forceBottleneck = false;
 
   // must compute forceBottleneck once, so that it is constant throughout this method
   bottleneck = bottleneckS = bridge->m_edge_capacity;
+  int path = 0;
   for (x=bridge->m_rev_edge->m_dst_node; ; x=a->m_dst_node)
   {
     if (x->m_excess) break;
@@ -608,6 +452,7 @@ void Graph<CapType>::Augment(Edge* bridge) {
     if (bottleneckS > a->m_rev_edge->m_edge_capacity) {
       bottleneckS = a->m_rev_edge->m_edge_capacity;
     }
+    path++;
   }
   if (bottleneckS > x->m_excess) {
     bottleneckS = x->m_excess;
@@ -623,6 +468,7 @@ void Graph<CapType>::Augment(Edge* bridge) {
     if (bottleneckT > a->m_edge_capacity) {
       bottleneckT = a->m_edge_capacity;
     }
+    path++;
   }
   if (bottleneckT > (-x->m_excess)) {
     bottleneckT = (-x->m_excess);
@@ -634,6 +480,10 @@ void Graph<CapType>::Augment(Edge* bridge) {
     if (bottleneckS < bottleneckT) bottleneck = bottleneckS;
     else bottleneck = bottleneckT;
   }
+  // if (m_path != path) {
+  //   printf("path = %d\n", path);
+  //   m_path = path;
+  // }
 
   // augment connecting arc
   bridge->m_rev_edge->m_edge_capacity += bottleneck;
@@ -645,11 +495,11 @@ void Graph<CapType>::Augment(Edge* bridge) {
   x = bridge->m_dst_node;
   assert(x->m_node_state == SINK);
   // if (!IB_EXCESSES || bottleneck == 1 || forceBottleneck) {
-  //   minOrphanLevel = augmentPath<false>(x, bottleneck);
-  //   adoption<false>(minOrphanLevel, true);
+  //   augmentPath<false>(x, bottleneck);
+  //   Adoption<false>();
   // } else {
-    minOrphanLevel = augmentExcess(x, bottleneck);
-    adoption(minOrphanLevel, false);
+    augmentExcess(x, bottleneck);
+    Adoption();
     augmentExcesses();
   // }
 
@@ -657,41 +507,23 @@ void Graph<CapType>::Augment(Edge* bridge) {
   x = bridge->m_rev_edge->m_dst_node;
   assert(x->m_node_state == SOURCE);
   // if (!IB_EXCESSES || bottleneck == 1 || forceBottleneck) {
-  //   minOrphanLevel = augmentPath<true>(x, bottleneck);
-  //   adoption<true>(minOrphanLevel, true);
+  //   augmentPath<true>(x, bottleneck);
+  //   Adoption<true>();
   // } else {
-    minOrphanLevel = augmentExcess(x, bottleneck);
-    adoption(minOrphanLevel, false);
+    augmentExcess(x, bottleneck);
+    Adoption();
     augmentExcesses();
   // }
 }
 #endif
 
 #ifdef EIBFS
-
-#define REMOVE_SIBLING(x, tmp) \
-  { (tmp) = (x)->m_parent_edge->m_dst_node->m_first_child_node; \
-  if ((tmp) == (x)) { \
-    (x)->m_parent_edge->m_dst_node->m_first_child_node = (x)->m_next_child_node; \
-  } else { \
-    for (; (tmp)->m_next_child_node != (x); (tmp) = (tmp)->m_next_child_node); \
-    (tmp)->m_next_child_node = (x)->m_next_child_node; \
-  } }
-
-#define ADD_SIBLING(x, parentNode) \
-  { (x)->m_next_child_node = (parentNode)->m_first_child_node; \
-  (parentNode)->m_first_child_node = (x); \
-  }
-
 // @ret: minimum level in which created an orphan
 template <class CapType>
-int Graph<CapType>::augmentExcess(Node *x, double push)
+void Graph<CapType>::augmentExcess(Node *x, double push)
 {
   Node *y;
   Edge *a;
-  int orphanMinLevel = (x->m_node_state == SOURCE ? m_global_source_dist : m_global_sink_dist) + 1;
-  augTimestamp++;
-
   // start of loop
   //----------------
   // x       the current node along the path
@@ -707,8 +539,7 @@ int Graph<CapType>::augmentExcess(Node *x, double push)
   // push     the amount of flow coming out of x
   // a->resCap  updated with outgoing flow already
   // x->excess  updated with incoming flow already
-  while (x->m_node_state == SOURCE ? (x->m_excess <= 0) : (x->m_excess >= 0))
-  {
+  while (x->m_node_state == SOURCE ? (x->m_excess <= 0) : (x->m_excess >= 0)) {
     a = x->m_parent_edge;
 
     // update excess and find next flow
@@ -748,16 +579,13 @@ int Graph<CapType>::augmentExcess(Node *x, double push)
       //   for (; node->m_next_child_node != x; node = node->m_next_child_node);
       //   node->m_next_child_node = x->m_next_child_node;
       // }
-      orphanMinLevel = x->m_terminal_dist;
-      orphanBuckets.add(x);
-      if (x->m_excess) excessBuckets.incMaxBucket(x->m_terminal_dist);
+      AddOrphanNode(x);
     }
 
     // advance
     // a precondition determines that the first node on the path is not in excess buckets
     // so only the next nodes may need to be removed from there
     x = a->m_dst_node;
-    if (x->m_node_state == SOURCE ? (x->m_excess < 0) : (x->m_excess > 0)) excessBuckets.remove(x);
   }
 
   // update the excess at the root
@@ -765,135 +593,106 @@ int Graph<CapType>::augmentExcess(Node *x, double push)
   else m_flow += (x->m_node_state == SOURCE ? (x->m_excess) : -(x->m_excess));
   x->m_excess += (x->m_node_state == SOURCE ? (-push) : push);
   if (x->m_node_state == SOURCE ? (x->m_excess <= 0) : (x->m_excess >= 0)) {
-    orphanMinLevel = x->m_terminal_dist;
-    orphanBuckets.add(x);
-    if (x->m_excess) excessBuckets.incMaxBucket(x->m_terminal_dist);
+    AddOrphanNode(x);
   }
-
-  return orphanMinLevel;
 }
 
 template <class CapType>
 void Graph<CapType>::augmentExcesses()
 {
   Node *x;
-  int minOrphanLevel;
-  int adoptedUpToLevel = excessBuckets.maxBucket;
-
-  if (!excessBuckets.empty())
-  for (; excessBuckets.maxBucket != (excessBuckets.minBucket-1); excessBuckets.maxBucket--)
-  while ((x=excessBuckets.popFront(excessBuckets.maxBucket)) != NULL)
-  {
-    minOrphanLevel = augmentExcess(x, 0);
-    // if we did not create new orphans
-    if (adoptedUpToLevel < minOrphanLevel) minOrphanLevel = adoptedUpToLevel;
-    adoption(minOrphanLevel, false);
-    adoptedUpToLevel = excessBuckets.maxBucket;
-  }
-  excessBuckets.reset();
-  if (orphanBuckets.maxBucket != 0) adoption(adoptedUpToLevel+1, true);
-  while ((x=excessBuckets.popFront(0)) != NULL) orphanFree(x);
-}
-
-template <class CapType>
-void Graph<CapType>::adoption(int fromLevel, bool toTop)
-{
-  Node *x, *y, *z;
-  Edge *a;
-  Edge *aEnd;
-  int minLabel;
-  int level;
-
-  for (level = fromLevel;
-    level <= orphanBuckets.maxBucket; // && (!IB_EXCESSES || toTop || level <= excessBuckets.maxBucket);
-    level++)
-  while ((x=orphanBuckets.popFront(level)) != NULL)
-  {
-    if (x->lastAugTimestamp != augTimestamp) {
-      x->lastAugTimestamp = augTimestamp;
-      if (x->m_node_state == SOURCE) m_global_source_orphan_num++;
-      else m_global_sink_orphan_num++;
-    }
-
-    x->m_parent_edge = NULL;
-    if (x->m_terminal_dist != 1)
-    {
-      minLabel = x->m_terminal_dist - 1;
-      for (int i = 0; i < x->m_out_edges_num; ++i) {
-        a = &x->m_out_edges[i];
-        y = a->m_dst_node;
-        if ((x->m_node_state == SOURCE ? a->m_rev_edge->m_edge_capacity : a->m_edge_capacity) != 0 &&
-            x->m_node_state == y->m_node_state && y->m_terminal_dist == minLabel && y->m_parent_edge)
-        {
-          x->m_parent_edge = a;
-          ADD_SIBLING(x,y);
-          // x->m_next_child_node = y->m_first_child_node;
-          // y->m_first_child_node = x;
-          break;
-        }
-      }
-    }
-    if (x->m_parent_edge != NULL) {
-      if (x->m_excess) excessBuckets.add(x);
+  while (!m_excess_queue.empty()) {
+    x = m_excess_queue.front();
+    m_excess_queue.pop();
+    x->m_in_queue = false;
+    if (!x->m_parent_edge) {
       continue;
     }
-
-    //
-    // on the top level there is no need to relabel
-    //
-    if (x->m_terminal_dist == (x->m_node_state == SOURCE ? m_global_source_dist : m_global_sink_dist)) {
-      orphanFree(x);
-      continue;
-    }
-
-    //
-    // give up on same level - relabel it!
-    // (1) create orphan sons
-    //
-    for (y=x->m_first_child_node; y != NULL; y=z)
-    {
-      z=y->m_next_child_node;
-      if (y->m_excess) excessBuckets.remove(y);
-      orphanBuckets.add(y);
-    }
-    x->m_first_child_node = NULL;
-
-    //
-    // (2) relabel: find the lowest level parent
-    //
-    minLabel = (x->m_node_state == SOURCE ? m_global_source_dist : m_global_sink_dist);
-    if (x->m_terminal_dist != minLabel) {
-      for (int i = 0; i < x->m_out_edges_num; ++i) {
-        a = &x->m_out_edges[i];
-        y = a->m_dst_node;
-        if ((x->m_node_state == SOURCE ? a->m_rev_edge->m_edge_capacity : a->m_edge_capacity) &&
-          x->m_node_state == y->m_node_state && y->m_terminal_dist < minLabel &&
-          y->m_parent_edge) {
-          minLabel = y->m_terminal_dist;
-          x->m_parent_edge = a;
-          if (minLabel == x->m_terminal_dist) break;
-        }
-      }
-    }
-
-    //
-    // (3) relabel onto new parent
-    //
-    if (x->m_parent_edge != NULL) {
-      x->m_terminal_dist = minLabel + 1;
-      ADD_SIBLING(x, x->m_parent_edge->m_dst_node);
-      // x->m_next_child_node = x->m_parent_edge->m_dst_node->m_first_child_node;
-      // x->m_parent_edge->m_dst_node->m_first_child_node = x;
-      // add to active list of the next growth phase
-      AddActiveNodeBack(x);
-      if (x->m_excess) excessBuckets.add(x);
-    } else {
-      orphanFree(x);
-    }
+    augmentExcess(x, 0);
+    Adoption();
   }
-  if (level > orphanBuckets.maxBucket) orphanBuckets.maxBucket=0;
 }
 #endif
+
+template <class CapType>
+void Graph<CapType>::Adoption() {
+  // adopt orphan nodes
+  while (true) {
+    Node* orphan_node = GetOrphanNode();
+    if (!orphan_node) {
+      break;
+    }
+    if (orphan_node->m_node_state == SOURCE) {
+      m_global_source_orphan_num++;
+    } else {
+      m_global_sink_orphan_num++;
+    }
+
+    FindNewPath(orphan_node);
+
+    if (!orphan_node->m_parent_edge) {
+      for (Node* child = orphan_node->m_first_child_node;
+           child; child = child->m_next_child_node) {
+        AddOrphanNode(child);
+      }
+      orphan_node->m_first_child_node = NULL;
+
+      int dist_min = (orphan_node->m_node_state == SOURCE) ?
+                     m_global_source_dist : m_global_sink_dist;
+      if (orphan_node->m_terminal_dist != dist_min) {
+        for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+          Edge* connected_edge = &orphan_node->m_out_edges[i];
+          Node* dst_node = connected_edge->m_dst_node;
+          Edge* parent_edge = dst_node->m_parent_edge;
+          CapType capacity = dst_node->m_node_state == SINK ?
+                             connected_edge->m_edge_capacity :
+                             connected_edge->m_rev_edge->m_edge_capacity;
+          if (parent_edge && capacity &&
+              dst_node->m_node_state == orphan_node->m_node_state &&
+              dst_node->m_terminal_dist < dist_min) {
+            orphan_node->m_parent_edge = connected_edge;
+            dist_min = dst_node->m_terminal_dist;
+            if (dist_min == orphan_node->m_terminal_dist) {
+              break;
+            }
+          }
+        }
+        if (orphan_node->m_parent_edge) {
+          Node* dst_node = orphan_node->m_parent_edge->m_dst_node;
+          ADD_SIBLING(orphan_node, dst_node);
+          // orphan_node->m_next_child_node = dst_node->m_first_child_node;
+          // dst_node->m_first_child_node = orphan_node;
+          assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
+          // orphan_node->m_timestamp = dst_node->m_timestamp;
+          orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
+          AddActiveNodeBack(orphan_node);
+#ifdef EIBFS
+          if (orphan_node->m_excess) {
+            if (!orphan_node->m_in_queue) {
+              orphan_node->m_in_queue = true;
+              m_excess_queue.push(orphan_node);
+            }
+          }
+#endif
+        }
+      }
+#ifdef EIBFS
+      if (!orphan_node->m_parent_edge) {
+        orphanFree(orphan_node);
+      }
+#endif
+    } else {
+#ifdef EIBFS
+      if (orphan_node->m_excess) {
+        if (!orphan_node->m_in_queue) {
+          orphan_node->m_in_queue = true;
+          m_excess_queue.push(orphan_node);
+        }
+      }
+#endif
+    }
+  }
+}
 
 template <class CapType>
 void Graph<CapType>::FindNewPath(Node* orphan_node) {
@@ -924,8 +723,9 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
   orphan_node->m_parent_edge = connected_edge_min;
   if (connected_edge_min) {
     Node* cen_node = connected_edge_min->m_dst_node;
-    orphan_node->m_next_child_node = cen_node->m_first_child_node;
-    cen_node->m_first_child_node = orphan_node;
+    ADD_SIBLING(orphan_node, cen_node);
+    // orphan_node->m_next_child_node = cen_node->m_first_child_node;
+    // cen_node->m_first_child_node = orphan_node;
     // orphan_node->m_timestamp = m_global_timestamp;
     orphan_node->m_terminal_dist = connected_edge_min->m_dst_node->m_terminal_dist + 1;
   }
@@ -968,10 +768,6 @@ CapType Graph<CapType>::MaxFlow() {
       if (!at_node) {
         continue;
       }
-#ifdef EIBFS
-    orphanBuckets.allocate((m_global_source_dist > m_global_sink_dist) ? m_global_source_dist : m_global_sink_dist);
-    excessBuckets.allocate((m_global_source_dist > m_global_sink_dist) ? m_global_source_dist : m_global_sink_dist);
-#endif
     }
     assert(at_node);
     meet_edge = NULL;
@@ -999,8 +795,9 @@ CapType Graph<CapType>::MaxFlow() {
         Node* dst_node = connected_edge->m_dst_node;
         if (!dst_node->m_parent_edge) {
           dst_node->m_parent_edge = connected_edge->m_rev_edge;
-          dst_node->m_next_child_node = at_node->m_first_child_node;
-          at_node->m_first_child_node = dst_node;
+          ADD_SIBLING(dst_node, at_node);
+          // dst_node->m_next_child_node = at_node->m_first_child_node;
+          // at_node->m_first_child_node = dst_node;
           // dst_node->m_timestamp = at_node->m_timestamp;
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
           dst_node->m_node_state = at_node->m_node_state;
@@ -1028,61 +825,8 @@ CapType Graph<CapType>::MaxFlow() {
 
     if (meet_edge) {
       Augment(meet_edge);
-
 #ifndef EIBFS
-      // adopt orphan nodes
-      while (true) {
-        Node* orphan_node = GetOrphanNode();
-        if (!orphan_node) {
-          break;
-        }
-        if (orphan_node->m_node_state == SOURCE) {
-          m_global_source_orphan_num++;
-        } else {
-          m_global_sink_orphan_num++;
-        }
-
-        FindNewPath(orphan_node);
-
-        if (!orphan_node->m_parent_edge) {
-          for (Node* child = orphan_node->m_first_child_node;
-               child; child = child->m_next_child_node) {
-            AddOrphanNode(child);
-          }
-          orphan_node->m_first_child_node = NULL;
-
-          int dist_min = (orphan_node->m_node_state == SOURCE) ?
-                         m_global_source_dist : m_global_sink_dist;
-          if (orphan_node->m_terminal_dist != dist_min) {
-            for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
-              Edge* connected_edge = &orphan_node->m_out_edges[i];
-              Node* dst_node = connected_edge->m_dst_node;
-              Edge* parent_edge = dst_node->m_parent_edge;
-              CapType capacity = dst_node->m_node_state == SINK ?
-                                 connected_edge->m_edge_capacity :
-                                 connected_edge->m_rev_edge->m_edge_capacity;
-              if (parent_edge && capacity &&
-                  dst_node->m_node_state == orphan_node->m_node_state &&
-                  dst_node->m_terminal_dist < dist_min) {
-                orphan_node->m_parent_edge = connected_edge;
-                dist_min = dst_node->m_terminal_dist;
-                if (dist_min == orphan_node->m_terminal_dist) {
-                  break;
-                }
-              }
-            }
-            if (orphan_node->m_parent_edge) {
-              Node* dst_node = orphan_node->m_parent_edge->m_dst_node;
-              orphan_node->m_next_child_node = dst_node->m_first_child_node;
-              dst_node->m_first_child_node = orphan_node;
-              assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
-              // orphan_node->m_timestamp = dst_node->m_timestamp;
-              orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
-              AddActiveNodeBack(orphan_node);
-            }
-          }
-        }
-      }
+      Adoption();
 #endif
     }
   }

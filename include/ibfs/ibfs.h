@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <queue>
 
 #define IB_EXCESSES 1
 #define IB_ALLOC_INIT_LEVELS 4096
@@ -35,8 +36,8 @@ public:
 
   struct Node
   {
+    bool     m_in_queue;
     int      id;
-    int      lastAugTimestamp:30;
     int      isParentCurr:1;
     int      isIncremental:1;
     Arc      *firstArc;
@@ -53,7 +54,7 @@ private:
   template<bool sTree> int augmentPath(Node *x, double push);
   template<bool sTree> int augmentExcess(Node *x, double push);
   template<bool sTree> void augmentExcesses();
-  template <bool sTree> void adoption(int fromLevel, bool toTop);
+  template <bool sTree> void adoption();
   template <bool dirS> void growth();
 
   double computeMaxFlow(bool trackChanges, bool initialDirS);
@@ -102,155 +103,14 @@ private:
     int len;
   };
 
-
-  class BucketsOneSided
-  {
-  public:
-    inline BucketsOneSided() {
-      buckets = NULL;
-      maxBucket = 0;
-      allocLevels = 0;
-    }
-    inline void init(int numNodes) {
-      allocLevels = numNodes/8;
-      if (allocLevels < IB_ALLOC_INIT_LEVELS) {
-        if (numNodes < IB_ALLOC_INIT_LEVELS) allocLevels = numNodes;
-        else allocLevels = IB_ALLOC_INIT_LEVELS;
-      }
-      buckets = new Node*[allocLevels+1];
-      memset(buckets, 0, sizeof(Node*)*(allocLevels+1));
-      maxBucket = 0;
-    }
-    inline void allocate(int numLevels) {
-      if (numLevels > allocLevels) {
-        allocLevels <<= 1;
-        Node **alloc = new Node*[allocLevels+1];
-        memset(alloc, 0, sizeof(Node*)*(allocLevels+1));
-        delete []buckets;
-        buckets = alloc;
-      }
-    }
-    inline void free() {
-      if (buckets != NULL) {
-        delete []buckets;
-        buckets = NULL;
-      }
-    }
-    template <bool sTree> inline void add(Node* x) {
-      int bucket = (sTree ? (x->label) : (-x->label));
-      x->nextPtr = buckets[bucket];
-      buckets[bucket] = x;
-      if (bucket > maxBucket) maxBucket = bucket;
-    }
-    inline Node* popFront(int bucket) {
-      Node *x;
-      if ((x = buckets[bucket]) == NULL) return NULL;
-      buckets[bucket] = x->nextPtr;
-      return x;
-    }
-
-    Node **buckets;
-    int maxBucket;
-    int allocLevels;
-  };
-
-#define IB_PREVPTR_EXCESS(x) (ptrs[(((x)->id)<<1) + 1])
-#define IB_NEXTPTR_EXCESS(x) (ptrs[((x)->id)<<1])
-
-  class ExcessBuckets
-  {
-  public:
-    inline ExcessBuckets() {
-      buckets = ptrs = NULL;
-      allocLevels = maxBucket = minBucket = -1;
-    }
-    inline void init(int numNodes) {
-      allocLevels = numNodes/8;
-      if (allocLevels < IB_ALLOC_INIT_LEVELS) {
-        if (numNodes < IB_ALLOC_INIT_LEVELS) allocLevels = numNodes;
-        else allocLevels = IB_ALLOC_INIT_LEVELS;
-      }
-      buckets = new Node*[allocLevels+1];
-      memset(buckets, 0, sizeof(Node*)*(allocLevels+1));
-      ptrs = new Node*[2 * numNodes];
-      memset(ptrs, 0, sizeof(Node*)*(2 * numNodes));
-      reset();
-    }
-    inline void allocate(int numLevels) {
-      if (numLevels > allocLevels) {
-        allocLevels <<= 1;
-        Node **alloc = new Node*[allocLevels+1];
-        memset(alloc, 0, sizeof(Node*)*(allocLevels+1));
-        //memcpy(alloc, buckets, sizeof(Node*)*(allocLevels+1));
-        delete []buckets;
-        buckets = alloc;
-      }
-    }
-    inline void free() {
-      if (buckets != NULL) {
-        delete []buckets;
-        buckets = NULL;
-      }
-      if (ptrs != NULL) {
-        delete [] ptrs;
-        ptrs = NULL;
-      }
-    }
-
-    template <bool sTree> inline void add(Node* x) {
-      int bucket = (sTree ? (x->label) : (-x->label));
-      IB_NEXTPTR_EXCESS(x) = buckets[bucket];
-      if (buckets[bucket] != NULL) {
-        IB_PREVPTR_EXCESS(buckets[bucket]) = x;
-      }
-      buckets[bucket] = x;
-      if (bucket > maxBucket) maxBucket = bucket;
-      if (bucket != 0 && bucket < minBucket) minBucket = bucket;
-    }
-    inline Node* popFront(int bucket) {
-      Node *x = buckets[bucket];
-      if (x == NULL) return NULL;
-      buckets[bucket] = IB_NEXTPTR_EXCESS(x);
-      return x;
-    }
-    template <bool sTree> inline void remove(Node *x) {
-      int bucket = (sTree ? (x->label) : (-x->label));
-      if (buckets[bucket] == x) {
-        buckets[bucket] = IB_NEXTPTR_EXCESS(x);
-      } else {
-        IB_NEXTPTR_EXCESS(IB_PREVPTR_EXCESS(x)) = IB_NEXTPTR_EXCESS(x);
-        if (IB_NEXTPTR_EXCESS(x) != NULL) IB_PREVPTR_EXCESS(IB_NEXTPTR_EXCESS(x)) = IB_PREVPTR_EXCESS(x);
-      }
-    }
-    inline void incMaxBucket(int bucket) {
-      if (maxBucket < bucket) maxBucket = bucket;
-    }
-    inline bool empty() {
-      return maxBucket < minBucket;
-    }
-    inline void reset() {
-      maxBucket = 0;
-      minBucket = -1 ^ (1<<31);
-    }
-
-    Node **buckets;
-    Node **ptrs;
-    int maxBucket;
-    int minBucket;
-    int allocLevels;
-  };
-
   // members
   Node  *nodes, *nodeEnd;
   Arc    *arcs, *arcEnd;
   Node  **ptrs;
   int   numNodes;
   double flow;
-  short   augTimestamp;
   int topLevelS, topLevelT;
   ActiveList active0, activeS1, activeT1;
-  BucketsOneSided orphanBuckets;
-  ExcessBuckets excessBuckets;
   //
   // Orphans
   //
@@ -284,6 +144,9 @@ private:
   char  *memArcs;
   TmpEdge  *tmpEdges, *tmpEdgeLast;
   TmpArc  *tmpArcs;
+  Node* m_orphanFirst;
+  Node* m_orphanLast;
+  std::queue<Node*> m_excess_queue;
   bool isInitializedGraph() {
     return memArcs != NULL;
   }
@@ -309,6 +172,7 @@ inline void IBFSGraph::addNode(int nodeIndex, double capSource, double capSink)
   }
   nodes[nodeIndex].excess = capSource - capSink;
   nodes[nodeIndex].id = nodeIndex;
+  nodes[nodeIndex].m_in_queue = false;
 }
 
 inline void IBFSGraph::addEdge(int nodeIndexFrom, int nodeIndexTo, double capacity, double reverseCapacity)

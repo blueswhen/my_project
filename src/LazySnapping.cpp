@@ -416,10 +416,10 @@ ct.PrintTime();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int vtx0 = BUILD_VTX(y * width + x);
-      if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-          mygraph.IsBelongToSource(vtx0)) {
       // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-      //     igraph.IsBelongToSource(vtx0)) {
+      //     mygraph.IsBelongToSource(vtx0)) {
+      if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
+          graph.isNodeOnSrcSide(vtx0)) {
         printf("error pixel\n");
       }
     }
