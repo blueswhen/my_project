@@ -26,6 +26,8 @@
 #define HALF_NEIGHBOUR_ARR_INDEX FOUR_ARR_INDEX
 #define NEIGHBOUR_ARR_INDEX EIGHT_ARR_INDEX
 
+// #define NEW_AL
+
 const double igraph_div_sqrt2 = 1 / sqrt(2.0f);
 
 #define FOUR_ARR_INDEX(node_x, node_y, image_width, image_height) \
@@ -46,6 +48,25 @@ const double igraph_div_sqrt2 = 1 / sqrt(2.0f);
   std::min(node_y + 1, image_height - 1) * image_width + std::min(image_width - 1, node_x + 1), \
   std::min(node_y + 1, image_height - 1) * image_width + node_x, \
   std::min(node_y + 1, image_height - 1) * image_width + std::max(0, node_x - 1) \
+}
+
+#define REMOVE_SIBLING(x) \
+{ \
+  if ((x)->m_parent_edge && (x)->m_parent_edge != TERMINAL && (x)->m_parent_edge != ORPHAN) { \
+    Node* tmp = (x)->m_parent_edge->m_dst_node->m_first_child_node; \
+    if (tmp == (x)) { \
+      (x)->m_parent_edge->m_dst_node->m_first_child_node = (x)->m_next_child_node; \
+    } else { \
+      for (; tmp->m_next_child_node != (x); tmp = tmp->m_next_child_node); \
+      tmp->m_next_child_node = (x)->m_next_child_node; \
+    } \
+  } \
+}
+
+#define ADD_SIBLING(x) \
+{ \
+  (x)->m_next_child_node = (x)->m_parent_edge->m_dst_node->m_first_child_node; \
+  (x)->m_parent_edge->m_dst_node->m_first_child_node = (x); \
 }
 
 template <class CapType, class EdgePunishFun>
@@ -69,7 +90,7 @@ class IGraph {
   struct Node {
     int m_node_idx;
     int m_node_colour;
-    CapType m_residue_capacity;
+    CapType m_excess;
     NodeState m_node_state;
     Edge* m_parent_edge;
     Node* m_first_child_node;
@@ -81,13 +102,18 @@ class IGraph {
     bool m_is_new_source_start;
     bool m_is_new_sink_start;
     // the timestamp of the latest dist calculating 
-    // int m_timestamp;
+    int m_timestamp;
     int m_terminal_dist;
     bool m_is_gotten_all_edges;
     Edge m_out_edges[NEIGHBOUR];
     int m_out_edges_num;
     bool m_in_actived;
-    Node* m_next_orphan;
+#ifdef NEW_AL
+    Edge* m_child_edge;
+    CapType m_needed_flow;
+    Node* m_next_node;
+    bool m_free;
+#endif
     Node()
       : m_out_edges({Edge(),Edge(),Edge(),Edge(),Edge(),Edge(),Edge(),Edge()}) {}
   };
@@ -278,38 +304,52 @@ class IGraph {
     }
     return active_node;
   }
-  void AddOrphanNodeBack(Node* orphan_node) {
+  void AddOrphanNode(Node* orphan_node, bool is_remove_child = true) {
     assert(orphan_node->m_parent_edge != ORPHAN);
-    orphan_node->m_parent_edge = ORPHAN;
-    if (m_last_orpn_node) {
-      m_last_orpn_node->m_next_orphan = orphan_node;
-      m_last_orpn_node = orphan_node;
-    } else {
-      m_first_orpn_node = orphan_node;
-      m_last_orpn_node = orphan_node;
+    if (is_remove_child) {
+      REMOVE_SIBLING(orphan_node);
     }
-    orphan_node->m_next_orphan = NULL;
+    orphan_node->m_parent_edge = ORPHAN;
+    m_orphan_nodes.push(orphan_node);
   }
   Node* GetOrphanNode() {
-    Node* orphan_node = m_first_orpn_node;
-    if (m_first_orpn_node) {
-      m_first_orpn_node = m_first_orpn_node->m_next_orphan;
-      if (!m_first_orpn_node) {
-        m_last_orpn_node = NULL;
-      }
+    Node* orphan_node = NULL;
+    if (!m_orphan_nodes.empty()) {
+      orphan_node = m_orphan_nodes.front();
+      m_orphan_nodes.pop();
+      assert(orphan_node->m_parent_edge == ORPHAN);
     }
     return orphan_node;
   }
 
   void FindNewPath(Node* orphan_node);
+  void FindNewPath_(Node* orphan_node);
+  void FindNewOrphans(Node* orphan_node);
+  void Adoption();
+  void Augment(Edge* meet_edge);
+#ifdef NEW_AL
+  void AdoptNewPath(Node* node);
+  void SetTerminalNode(Node* node);
+  void Same(CapType& dst_val, CapType comp_val);
+  void PushFlow(Node* src_node, Node* dst_node, Edge* flow_edge, CapType push_flow);
+  void SetResFlow(bool node_type, CapType minus_flow);
+
+  bool Empty(bool node_type);
+  void Push(Node* node);
+  Node*& Top(bool node_type);
+  void Pop(bool node_type);
+  void PushEnoughFlowToOneNode(bool node_type);
+
+  void PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node);
+  void PushEnoughFlow(Node* source_node, Node* sink_node, CapType* min_edge_capacity);
+#endif
   void CreateOutEdges(Node* cen_node);
   Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor,
                    int edge_index, int rev_edge_index);
 
   std::vector<Node> m_nodes;
+  std::queue<Node*> m_orphan_nodes;
   CapType m_flow;
-  Node* m_first_orpn_node;
-  Node* m_last_orpn_node;
   // ImageData<int>* m_marked_image;
   int m_image_width;
   int m_image_height;
@@ -326,7 +366,17 @@ class IGraph {
   NodeState m_global_state;
   int m_global_source_orphan_num;
   int m_global_sink_orphan_num;
-  // int m_global_timestamp;
+  int m_global_timestamp;
+#ifdef NEW_AL
+  CapType m_source_res_flow;
+  bool m_is_source_end;
+  CapType m_sink_res_flow;
+  bool m_is_sink_end;
+  Node* m_top_source_node;
+  Node* m_top_sink_node;
+  Node* m_source_first_node;
+  Node* m_sink_first_node;
+#endif
   int m_path;
 };
 
@@ -334,8 +384,6 @@ template <class CapType, class EdgePunishFun>
 IGraph<CapType, EdgePunishFun>::IGraph(int max_nodes_number, int image_width, int image_height,
                                        EdgePunishFun epf, ImageData<int>* marked_image)
   : m_flow(0)
-  , m_first_orpn_node(NULL)
-  , m_last_orpn_node(m_first_orpn_node)
   // , m_marked_image(marked_image)
   , m_image_width(image_width)
   , m_image_height(image_height)
@@ -351,7 +399,17 @@ IGraph<CapType, EdgePunishFun>::IGraph(int max_nodes_number, int image_width, in
   , m_global_state(SOURCE)
   , m_global_source_orphan_num(0)
   , m_global_sink_orphan_num(0)
-  // , m_global_timestamp(0)
+  , m_global_timestamp(0)
+#ifdef NEW_AL
+  , m_source_res_flow(0)
+  , m_is_source_end(false)
+  , m_sink_res_flow(0)
+  , m_is_sink_end(false)
+  , m_top_source_node(NULL)
+  , m_top_sink_node(NULL)
+  , m_source_first_node(NULL)
+  , m_sink_first_node(NULL)
+#endif
   , m_path(0)
   , m_epf(epf) {
     m_nodes.reserve(max_nodes_number);
@@ -365,7 +423,7 @@ void IGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacit
   Node* node = &m_nodes[node_id];
   node->m_node_idx = node_id;
   node->m_node_colour = node_colour;
-  node->m_residue_capacity = node_capacity;
+  node->m_excess = node_capacity;
   node->m_node_state = node_capacity > 0 ? SOURCE : SINK;
   node->m_parent_edge = TERMINAL;
   node->m_first_child_node = NULL;
@@ -376,12 +434,17 @@ void IGraph<CapType, EdgePunishFun>::AddNode(int node_id, CapType source_capacit
   node->m_is_sink_active = false;
   node->m_is_new_source_start = false;
   node->m_is_new_sink_start = false;
-  // node->m_timestamp = 0;
+  node->m_timestamp = 0;
   node->m_terminal_dist = 1;
   node->m_is_gotten_all_edges = false;
   node->m_out_edges_num = 0;
   node->m_in_actived = false;
-  node->m_next_orphan = NULL;
+#ifdef NEW_AL
+  node->m_child_edge = NULL;
+  node->m_needed_flow = 0;
+  node->m_next_node = NULL;
+  node->m_free = false;
+#endif
   // SET_PIXEL(m_marked_image, node_id, node_capacity > 0 ? WHITE : BLACK);
 }
 
@@ -473,6 +536,7 @@ void IGraph<CapType, EdgePunishFun>::CreateOutEdges(Node* cen_node) {
 
 template <class CapType, class EdgePunishFun>
 void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
+  assert(orphan_node->m_parent_edge == ORPHAN);
   Edge* connected_edge_min = NULL;
   if (orphan_node->m_terminal_dist == 1) {
     CreateOutEdges(orphan_node);
@@ -489,11 +553,15 @@ void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
       CapType capacity = orphan_node->m_node_state == SINK ?
                          connected_edge->m_edge_capacity :
                          connected_edge->m_rev_edge->m_edge_capacity;
-      if (!capacity || connected_edge->m_dst_node->m_terminal_dist !=
-          orphan_node->m_terminal_dist - 1) {
+      Node* dst_node = connected_edge->m_dst_node;
+      if (!capacity
+#ifdef NEW_AL
+          && (!orphan_node->m_child_edge || orphan_node->m_child_edge->m_dst_node != dst_node)
+#endif
+          || dst_node->m_terminal_dist != orphan_node->m_terminal_dist - 1) {
         continue;
       }
-      if (connected_edge->m_dst_node->m_parent_edge) {
+      if (dst_node->m_parent_edge) {
         connected_edge_min = connected_edge;
         assert(orphan_node->m_terminal_dist == connected_edge_min->m_dst_node->m_terminal_dist + 1);
         break;
@@ -502,12 +570,458 @@ void IGraph<CapType, EdgePunishFun>::FindNewPath(Node* orphan_node) {
   }
   orphan_node->m_parent_edge = connected_edge_min;
   if (connected_edge_min) {
-    Node* cen_node = connected_edge_min->m_dst_node;
-    orphan_node->m_next_child_node = cen_node->m_first_child_node;
-    cen_node->m_first_child_node = orphan_node;
-    // orphan_node->m_timestamp = m_global_timestamp;
+    ADD_SIBLING(orphan_node);
+    orphan_node->m_timestamp = m_global_timestamp;
     orphan_node->m_terminal_dist = connected_edge_min->m_dst_node->m_terminal_dist + 1;
   }
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::FindNewPath_(Node* orphan_node) {
+  m_global_timestamp++;
+  int dist_min = INIFINITE_DIST;
+  Edge* connected_edge_min = NULL;
+  assert(orphan_node->m_parent_edge == ORPHAN);
+
+  CreateOutEdges(orphan_node);
+  for (int i = 0; i < NEIGHBOUR; ++i) {
+    if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+      continue;
+    }
+    Edge* connected_edge = &orphan_node->m_out_edges[i];
+    if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
+      CapType capacity = orphan_node->m_node_state == SINK ?
+                         connected_edge->m_edge_capacity :
+                         connected_edge->m_rev_edge->m_edge_capacity;
+      if (!capacity) {
+        continue;
+      }
+      Node* dst_node = connected_edge->m_dst_node;
+      Edge* parent_edge = dst_node->m_parent_edge;
+      if (parent_edge) {
+        int dist = 0;
+        while (true) {
+          if (dst_node->m_timestamp == m_global_timestamp) {
+            dist += dst_node->m_terminal_dist;
+            break;
+          }
+          parent_edge = dst_node->m_parent_edge;
+          dist++;
+          if (parent_edge == TERMINAL) {
+            dst_node->m_timestamp = m_global_timestamp;
+            // dst_node->m_terminal_dist = 1;
+            break;
+          }
+          if (parent_edge == ORPHAN) {
+            dist = INIFINITE_DIST;
+            break;
+          }
+          assert(parent_edge);
+          dst_node = parent_edge->m_dst_node;
+        }
+        if (dist < INIFINITE_DIST) {
+          if (dist < dist_min) {
+            connected_edge_min = connected_edge;
+            dist_min = dist;
+          }
+          for (dst_node = connected_edge->m_dst_node;
+               dst_node->m_timestamp != m_global_timestamp;
+               dst_node = dst_node->m_parent_edge->m_dst_node) {
+            dst_node->m_timestamp = m_global_timestamp;
+            // dst_node->m_terminal_dist = dist--;
+          }
+        }
+      }
+    }
+  }
+  orphan_node->m_parent_edge = connected_edge_min;
+  if (connected_edge_min) {
+    ADD_SIBLING(orphan_node);
+    orphan_node->m_timestamp = m_global_timestamp;
+    // orphan_node->m_terminal_dist = connected_edge_min->m_dst_node->m_terminal_dist + 1;
+  }
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::FindNewOrphans(Node* orphan_node) {
+  assert(!orphan_node->m_parent_edge);
+#ifdef NEW_AL
+  orphan_node->m_free = true;
+#endif
+  for (Node* child = orphan_node->m_first_child_node;
+       child; child = child->m_next_child_node) {
+    AddOrphanNode(child, false);
+  }
+  orphan_node->m_first_child_node = NULL;
+
+  int dist_min = (orphan_node->m_node_state == SOURCE) ?
+                  m_global_source_dist : m_global_sink_dist;
+  if (orphan_node->m_terminal_dist != dist_min) {
+    for (int i = 0; i < NEIGHBOUR; ++i) {
+      if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+        continue;
+      }
+      Edge* connected_edge = &orphan_node->m_out_edges[i];
+      Node* dst_node = connected_edge->m_dst_node;
+      Edge* parent_edge = dst_node->m_parent_edge;
+      CapType capacity = dst_node->m_node_state == SINK ?
+                         connected_edge->m_edge_capacity :
+                         connected_edge->m_rev_edge->m_edge_capacity;
+      if (parent_edge && (capacity
+#ifdef NEW_AL
+          || (orphan_node->m_child_edge && orphan_node->m_child_edge->m_dst_node == dst_node)
+#endif
+          ) &&
+          dst_node->m_node_state == orphan_node->m_node_state &&
+          dst_node->m_terminal_dist < dist_min) {
+        orphan_node->m_parent_edge = connected_edge;
+        dist_min = dst_node->m_terminal_dist;
+        if (dist_min == orphan_node->m_terminal_dist) {
+          break;
+        }
+      }
+    }
+    if (orphan_node->m_parent_edge) {
+      Node* dst_node = orphan_node->m_parent_edge->m_dst_node;
+      ADD_SIBLING(orphan_node);
+      assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
+      orphan_node->m_timestamp = dst_node->m_timestamp;
+      orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
+      AddActiveNodeBack(orphan_node);
+    }
+  }
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::Adoption() {
+  // adopt orphan nodes
+  while (true) {
+    Node* orphan_node = GetOrphanNode();
+    if (!orphan_node) {
+      break;
+    }
+    if (orphan_node->m_node_state == SOURCE) {
+      m_global_source_orphan_num++;
+    } else {
+      m_global_sink_orphan_num++;
+    }
+
+    FindNewPath(orphan_node);
+
+    if (!orphan_node->m_parent_edge) {
+      FindNewOrphans(orphan_node);
+    }
+  }
+}
+
+#ifdef NEW_AL
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::SetTerminalNode(Node* node) {
+  REMOVE_SIBLING(node);
+  node->m_parent_edge = TERMINAL;
+  node->m_terminal_dist = 1;
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::Same(CapType& dst_val, CapType comp_val) {
+  if (ABS(dst_val- comp_val) < EPSILON) {
+    dst_val = comp_val;
+  }
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::PushFlow(
+  Node* src_node, Node* dst_node, Edge* flow_edge, CapType push_flow) {
+  assert(src_node->m_node_state == dst_node->m_node_state);
+  CapType node_type = src_node->m_node_state;
+  CapType flow = std::min(ABS(src_node->m_excess), ABS(push_flow));
+  flow = std::min(flow, flow_edge->m_edge_capacity);
+
+  src_node->m_excess -= node_type == SOURCE ? flow : -flow;
+  Same(src_node->m_excess, 0);
+
+  dst_node->m_excess += node_type == SOURCE ? flow : -flow;
+  flow_edge->m_edge_capacity -= flow;
+  Same(flow_edge->m_edge_capacity, 0);
+
+  flow_edge->m_rev_edge->m_edge_capacity += flow;
+  dst_node->m_needed_flow -= flow;
+  Same(dst_node->m_needed_flow, 0);
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::AdoptNewPath(Node* node) {
+  if (node->m_parent_edge == TERMINAL) {
+    AddOrphanNode(node);
+  }
+  Adoption();
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::SetResFlow(bool node_type, CapType minus_flow) {
+  if (!minus_flow) {
+    return;
+  }
+  CapType& res_flow = node_type == SOURCE ? m_source_res_flow : m_sink_res_flow;
+  bool& node_end = node_type == SOURCE ? m_is_source_end : m_is_sink_end;
+  res_flow -= ABS(minus_flow);
+  // Same(res_flow, 0);
+  if (!res_flow) {
+    node_end = true;
+  }
+}
+
+template <class CapType, class EdgePunishFun>
+bool IGraph<CapType, EdgePunishFun>::Empty(bool node_type) {
+  Node*& top_node = node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+  if (!top_node) {
+    return true;
+  }
+  return false;
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::Push(Node* node) {
+  Node*& top_node = node->m_node_state == SOURCE ? m_top_source_node : m_top_sink_node;
+  node->m_next_node = top_node;
+  top_node = node;
+}
+
+template <class CapType, class EdgePunishFun>
+typename IGraph<CapType, EdgePunishFun>::Node*&
+  IGraph<CapType, EdgePunishFun>::Top(bool node_type) {
+  return node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::Pop(bool node_type) {
+  Node*& top_node = node_type == SOURCE ? m_top_source_node : m_top_sink_node;
+  assert(top_node);
+  Node* tmp = top_node;
+  top_node = top_node->m_next_node;
+  tmp->m_next_node = NULL;
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::PushEnoughFlowToOneNode(bool node_type) {
+  assert(!Empty(node_type));
+  Node* node = Top(node_type);
+  bool& node_end = node_type == SOURCE ? m_is_source_end : m_is_sink_end;
+  CapType& node_res_flow = node_type == SOURCE ? m_source_res_flow : m_sink_res_flow;
+
+  Node* src_node = node;
+  CapType push_flow = node->m_excess;
+  if (node->m_needed_flow < 0) {
+    push_flow = node->m_needed_flow == -INT_MAX ? 0 : node->m_needed_flow;
+    node->m_needed_flow = 0;
+  }
+  while (!node_end && !node->m_free && node->m_needed_flow) {
+    if (node->m_parent_edge == ORPHAN || node->m_parent_edge == TERMINAL) {
+      AdoptNewPath(node);
+      if (node_end || node->m_free) {
+        break;
+      }
+    }
+
+    assert(node->m_needed_flow && node->m_parent_edge);
+    Node* dst_node = node->m_parent_edge->m_dst_node;
+    dst_node->m_child_edge = node->m_parent_edge->m_rev_edge;
+    Edge* flow_edge = node_type == SINK ?
+      node->m_parent_edge : node->m_parent_edge->m_rev_edge;
+    assert(flow_edge->m_edge_capacity);
+    CapType src_nd_flow = std::min(flow_edge->m_edge_capacity, node->m_needed_flow);
+    CapType dst_nd_flow = src_nd_flow - ABS(dst_node->m_excess);
+    CapType minus_flow;
+    if (dst_nd_flow > 0) {
+      minus_flow = dst_node->m_excess;
+      dst_node->m_needed_flow = dst_nd_flow;
+    } else {
+      minus_flow = src_nd_flow;
+      dst_node->m_needed_flow = -src_nd_flow;
+      assert(node->m_needed_flow);
+      assert(dst_node->m_parent_edge == TERMINAL);
+    }
+    SetResFlow(node_type, minus_flow);
+    Push(dst_node);
+    return;
+  }
+  if (node->m_free) {
+    node->m_free = false;
+  }
+  if (src_node->m_child_edge) {
+    Node* child_node = src_node->m_child_edge->m_dst_node;
+    Edge* flow_edge = node_type == SOURCE ?
+      src_node->m_child_edge : src_node->m_child_edge->m_rev_edge;
+    if (push_flow) {
+      PushFlow(src_node, child_node, flow_edge, push_flow);
+    }
+    if (!flow_edge->m_edge_capacity && child_node->m_parent_edge &&
+        child_node->m_parent_edge->m_dst_node == src_node) {
+      AddOrphanNode(child_node);
+    }
+    src_node->m_child_edge = NULL;
+  }
+  Pop(node_type);
+}
+
+// node is current Node
+// needed_flow is except the excess of the node what the node need in flow.
+// res_flow is the total resident flow
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node) {
+  Push(source_node);
+  Push(sink_node);
+  m_source_first_node = source_node;
+  m_sink_first_node = sink_node;
+  bool is_source_once = false;
+  bool is_sink_once = false;
+
+  while (!Empty(SOURCE) || !Empty(SINK)) {
+    if (!Empty(SOURCE) && (m_source_res_flow > m_sink_res_flow || Empty(SINK))) {
+      if (m_source_res_flow < m_sink_res_flow && !is_source_once) {
+        is_source_once = true;
+        Node* top_node = Top(SOURCE);
+        if (top_node->m_needed_flow < 0) {
+          top_node->m_needed_flow = top_node->m_needed_flow + m_sink_res_flow - m_source_res_flow;
+        } else {
+          top_node->m_needed_flow = -top_node->m_excess + m_sink_res_flow - m_source_res_flow;
+        }
+        // Same(top_node->m_needed_flow, 0);
+        if (top_node->m_needed_flow == 0) {
+          top_node->m_needed_flow = -INT_MAX; 
+        }
+        assert(top_node->m_needed_flow <= 0);
+        m_is_source_end = true;
+      }
+      PushEnoughFlowToOneNode(SOURCE);
+    } else {
+      if (m_source_res_flow > m_sink_res_flow && !is_sink_once) {
+        is_sink_once = true;
+        Node* top_node = Top(SINK);
+        if (top_node->m_needed_flow < 0) {
+          top_node->m_needed_flow = top_node->m_needed_flow + m_source_res_flow - m_sink_res_flow;
+        } else {
+          top_node->m_needed_flow = top_node->m_excess + m_source_res_flow - m_sink_res_flow;
+        }
+        // Same(top_node->m_needed_flow, 0);
+        if (top_node->m_needed_flow == 0) {
+          top_node->m_needed_flow = -INT_MAX; 
+        }
+        assert(top_node->m_needed_flow <= 0);
+        m_is_sink_end = true;
+      }
+      PushEnoughFlowToOneNode(SINK);
+    }
+  }
+}
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::PushEnoughFlow(
+  Node* source_node, Node* sink_node, CapType* min_edge_capacity) {
+  m_source_res_flow = *min_edge_capacity;
+  m_sink_res_flow = *min_edge_capacity;
+  m_is_source_end = false;
+  m_is_sink_end = false;
+  source_node->m_needed_flow = std::max(m_source_res_flow - source_node->m_excess, 0.0);
+  sink_node->m_needed_flow = std::max(m_sink_res_flow + sink_node->m_excess, 0.0);
+  source_node->m_child_edge = NULL;
+  sink_node->m_child_edge = NULL;
+  SetResFlow(SOURCE, source_node->m_excess);
+  SetResFlow(SINK, sink_node->m_excess);
+
+  PushEnoughFlowToTwoNodes(source_node, sink_node);
+
+  Same(source_node->m_excess, *min_edge_capacity);
+  Same(sink_node->m_excess, -*min_edge_capacity);
+  Same(source_node->m_excess, -sink_node->m_excess);
+  *min_edge_capacity = std::min(*min_edge_capacity, source_node->m_excess);
+  *min_edge_capacity = std::min(*min_edge_capacity, -sink_node->m_excess);
+}
+#endif
+
+template <class CapType, class EdgePunishFun>
+void IGraph<CapType, EdgePunishFun>::Augment(Edge* meet_edge) {
+  // augment path
+  Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
+	CapType min_capacity = meet_edge -> m_edge_capacity;
+  // first_edge[0] for source tree and first_edge[1] for sink tree
+  // find min capacity from path
+  int path = 0;
+#ifdef NEW_AL
+  Node* flow_nodes[2] = {meet_edge->m_rev_edge->m_dst_node, meet_edge->m_dst_node};
+#else
+  for (int i = 0; i < 2; ++i) {
+    Node* parent_node = first_edge[i]->m_dst_node;
+    for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
+         parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
+      assert(parent_edge);
+      assert(parent_edge != ORPHAN);
+      Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
+      CapType cap = edge->m_edge_capacity;
+      assert(cap > 0);
+      if (cap < min_capacity) {
+        min_capacity = cap;
+      }
+      m_path++;
+    }
+    CapType node_cap = parent_node->m_excess;
+    CapType final_node_capacity = i == 0 ? node_cap : -node_cap; 
+    if (final_node_capacity < min_capacity) {
+      min_capacity = final_node_capacity;
+    }
+  }
+#endif
+  // if (m_path != path) {
+  //   printf("path = %d\n", path);
+  //   m_path = path;
+  // }
+#ifdef NEW_AL
+  PushEnoughFlow(flow_nodes[0], flow_nodes[1], &min_capacity);
+ 
+  first_edge[0]->m_edge_capacity += min_capacity;
+  first_edge[1]->m_edge_capacity -= min_capacity;
+  CapType& source_excess = flow_nodes[0]->m_excess;
+  CapType& sink_excess = flow_nodes[1]->m_excess;
+  source_excess -= min_capacity;
+  sink_excess += min_capacity;
+  if (source_excess) {
+    assert(flow_nodes[0]->m_parent_edge == TERMINAL);
+  } else {
+    if (flow_nodes[0]->m_parent_edge == TERMINAL) {
+      AddOrphanNode(flow_nodes[0]);
+    }
+    assert(flow_nodes[0]->m_parent_edge != TERMINAL);
+  }
+  if (sink_excess) {
+    assert(flow_nodes[1]->m_parent_edge == TERMINAL);
+  } else {
+    if (flow_nodes[1]->m_parent_edge == TERMINAL) {
+      AddOrphanNode(flow_nodes[1]);
+    }
+    assert(flow_nodes[1]->m_parent_edge != TERMINAL);
+  }
+#else
+  first_edge[0]->m_edge_capacity += min_capacity;
+  first_edge[1]->m_edge_capacity -= min_capacity;
+  for (int i = 0; i < 2; ++i) {
+    Node* parent_node = first_edge[i]->m_dst_node;
+    int factor = 2 * i - 1;
+    for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
+         parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
+      parent_edge->m_edge_capacity += (-factor) * min_capacity;
+      parent_edge->m_rev_edge->m_edge_capacity += factor * min_capacity;
+      Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
+      if (!edge->m_edge_capacity) {
+        AddOrphanNode(parent_node);
+      }
+    }
+    parent_node->m_excess += factor * min_capacity;
+    if (!parent_node->m_excess) {
+      AddOrphanNode(parent_node);
+    }
+  }
+#endif
+  m_flow += min_capacity;
 }
 
 template <class CapType, class EdgePunishFun>
@@ -551,17 +1065,15 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
       CapType capacity = at_node->m_node_state == SINK ?
                          connected_edge->m_rev_edge->m_edge_capacity :
                          connected_edge->m_edge_capacity;
+      Node* dst_node = connected_edge->m_dst_node;
       if (capacity != 0) {
-        Node* dst_node = connected_edge->m_dst_node;
         if (!dst_node->m_parent_edge) {
           dst_node->m_parent_edge = connected_edge->m_rev_edge;
-          dst_node->m_next_child_node = at_node->m_first_child_node;
-          at_node->m_first_child_node = dst_node;
-          // dst_node->m_timestamp = at_node->m_timestamp;
+          ADD_SIBLING(dst_node);
+          dst_node->m_timestamp = at_node->m_timestamp;
           dst_node->m_terminal_dist = at_node->m_terminal_dist + 1;
           dst_node->m_node_state = at_node->m_node_state;
           AddActiveNodeBack(dst_node);
-          // SET_PIXEL(m_marked_image, dst_node->m_node_idx, dst_node->m_node_state == SOURCE ? COLOUR_DARK_RED : GRAY);
         } else if (dst_node->m_node_state != at_node->m_node_state) {
           meet_edge = at_node->m_node_state == SINK ?
                       connected_edge->m_rev_edge : connected_edge;
@@ -579,125 +1091,12 @@ void IGraph<CapType, EdgePunishFun>::MaxFlow() {
     // m_global_timestamp++;
 
     if (meet_edge) {
-      // augment path
-      Edge* first_edge[2] = {meet_edge->m_rev_edge, meet_edge};
-	    CapType min_capacity = meet_edge -> m_edge_capacity;
-      // first_edge[0] for source tree and first_edge[1] for sink tree
-      // find min capacity from path
-      int path = 0;
-      for (int i = 0; i < 2; ++i) {
-        Node* parent_node = first_edge[i]->m_dst_node;
-        for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
-             parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
-          assert(parent_edge);
-          assert(parent_edge != ORPHAN);
-          Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
-          CapType cap = edge->m_edge_capacity;
-          assert(cap > 0);
-          if (cap < min_capacity) {
-            min_capacity = cap;
-          }
-          path++;
-        }
-        CapType node_cap = parent_node->m_residue_capacity;
-        CapType final_node_capacity = i == 0 ? node_cap : -node_cap; 
-        if (final_node_capacity < min_capacity) {
-          min_capacity = final_node_capacity;
-        }
-      }
-      // if (m_path != path) {
-      //   printf("path = %d\n", path);
-      //   m_path = path;
-      // }
-     
-      first_edge[0]->m_edge_capacity += min_capacity;
-      first_edge[1]->m_edge_capacity -= min_capacity;
-      for (int i = 0; i < 2; ++i) {
-        Node* parent_node = first_edge[i]->m_dst_node;
-        int factor = 2 * i - 1;
-        for (Edge* parent_edge = parent_node->m_parent_edge; parent_edge != TERMINAL;
-             parent_node = parent_edge->m_dst_node, parent_edge = parent_node->m_parent_edge) {
-          parent_edge->m_edge_capacity += (-factor) * min_capacity;
-          parent_edge->m_rev_edge->m_edge_capacity += factor * min_capacity;
-          Edge* edge = i == 0 ? parent_edge->m_rev_edge : parent_edge;
-          if (!edge->m_edge_capacity) {
-            AddOrphanNodeBack(parent_node);
-            Node* node = parent_edge->m_dst_node->m_first_child_node;
-            if (node == parent_node) {
-              parent_edge->m_dst_node->m_first_child_node = parent_node->m_next_child_node;
-            } else {
-              for (; node->m_next_child_node != parent_node; node = node->m_next_child_node);
-              node->m_next_child_node = parent_node->m_next_child_node;
-            }
-          }
-        }
-        parent_node->m_residue_capacity += factor * min_capacity;
-        if (!parent_node->m_residue_capacity) {
-          AddOrphanNodeBack(parent_node);
-        }
-      }
-      m_flow += min_capacity;
-
-      // adopt orphan nodes
-      while (true) {
-        Node* orphan_node = GetOrphanNode();
-        if (!orphan_node) {
-          break;
-        }
-        if (orphan_node->m_node_state == SOURCE) {
-          m_global_source_orphan_num++;
-        } else {
-          m_global_sink_orphan_num++;
-        }
-
-        FindNewPath(orphan_node);
-
-        if (!orphan_node->m_parent_edge) {
-          for (Node* child = orphan_node->m_first_child_node;
-               child; child = child->m_next_child_node) {
-            AddOrphanNodeBack(child);
-          }
-          orphan_node->m_first_child_node = NULL;
-          
-          int dist_min = (orphan_node->m_node_state == SOURCE) ?
-                         m_global_source_dist : m_global_sink_dist;
-          if (orphan_node->m_terminal_dist != dist_min) {
-            for (int i = 0; i < NEIGHBOUR; ++i) {
-              if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
-                continue;
-              }
-              Edge* connected_edge = &orphan_node->m_out_edges[i];
-              Node* dst_node = connected_edge->m_dst_node;
-              Edge* parent_edge = dst_node->m_parent_edge;
-              CapType capacity = dst_node->m_node_state == SINK ?
-                                 connected_edge->m_edge_capacity :
-                                 connected_edge->m_rev_edge->m_edge_capacity;
-              if (parent_edge && capacity &&
-                  dst_node->m_node_state == orphan_node->m_node_state &&
-                  dst_node->m_terminal_dist < dist_min) {
-                orphan_node->m_parent_edge = connected_edge;
-                dist_min = dst_node->m_terminal_dist;
-                if (dist_min == orphan_node->m_terminal_dist) {
-                  break;
-                }
-              }
-            }
-            if (orphan_node->m_parent_edge) {
-              Node* dst_node = orphan_node->m_parent_edge->m_dst_node;
-              orphan_node->m_next_child_node = dst_node->m_first_child_node;
-              dst_node->m_first_child_node = orphan_node;
-              assert(orphan_node->m_terminal_dist < dst_node->m_terminal_dist + 1);
-              // orphan_node->m_timestamp = dst_node->m_timestamp;
-              orphan_node->m_terminal_dist = dst_node->m_terminal_dist + 1;
-              AddActiveNodeBack(orphan_node);
-            }
-          }
-        }
-      }
+      Augment(meet_edge);
+      Adoption();
     }
   }
-  // printf("augment path = %d, m_flow = %f\n", path, m_flow);
-  // printf("r = %f\n", static_cast<double>(m_nlink)/(m_image_width * m_image_height));
+  // printf("augment path = %d, m_flow = %f\n", m_path, m_flow);
+  // // printf("r = %f\n", static_cast<double>(m_nlink)/(m_image_width * m_image_height));
 }
 
 template <class CapType, class EdgePunishFun>
@@ -708,4 +1107,6 @@ bool IGraph<CapType, EdgePunishFun>::IsBelongToSource(int node_id) {
 #undef TERMINAL
 #undef ORPHAN
 #undef EIGHT_ARR_INDEX
+#undef REMOVE_SIBLING
+#undef ADD_SIBLING
 #endif  // INCLUDE_IGRAPH_H_
