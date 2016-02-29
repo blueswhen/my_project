@@ -17,7 +17,6 @@
 #include "include/ui.h"
 #include "include/Gmm.h"
 #include "include/IGraph.h"
-#include "include/FGraph.h"
 // #include "include/Graph.h"
 #include "include/maxflow-v3.03/block.h"
 #include "include/maxflow-v3.03/graph.h"
@@ -184,7 +183,6 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
 
 #define B_MAXFLOW 0
 #define IGRAPH 1
-#define FGRAPH 0
 
 #if B_MAXFLOW
   GraphType graph(vtx_count, edge_count);
@@ -193,10 +191,6 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   EdgePunishItem epi(gamma, beta);
 #if IGRAPH
   IGraph<double, EdgePunishItem> igraph(vtx_count, width, height, epi, marked_image);
-#endif
-
-#if FGRAPH
-  FGraph<double, EdgePunishItem> fgraph(vtx_count, width, height, epi, marked_image);
 #endif
 
   const double gammaDivSqrt2 = gamma / std::sqrt(2.0f);
@@ -230,10 +224,6 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
 #if IGRAPH
       igraph.AddNode(vtx0, e1[0], e1[1], colour);
       igraph.AddActiveNodes(x, y);
-#endif
-#if FGRAPH
-      fgraph.AddNode(vtx0, e1[0], e1[1], colour);
-      fgraph.AddActiveNodes(x, y);
 #endif
 
 #if B_MAXFLOW
@@ -284,9 +274,6 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   // ct.ContEnd();
   // ct.PrintTime();
 #endif
-#if FGRAPH
-  fgraph.MaxFlow();
-#endif
 
 #if 0
   for (int y = 0; y < height; ++y) {
@@ -316,13 +303,6 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
 #endif
 #if IGRAPH 
         if (igraph.IsBelongToSource(vtx0)) {
-          SET_PIXEL(marked_image, index, PR_SUB);
-        } else {
-          SET_PIXEL(marked_image, index, PR_BCK);
-        }
-#endif
-#if FGRAPH 
-        if (fgraph.IsBelongToSource(vtx0)) {
           SET_PIXEL(marked_image, index, PR_SUB);
         } else {
           SET_PIXEL(marked_image, index, PR_BCK);

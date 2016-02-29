@@ -23,9 +23,7 @@ lazysnapping : \
   include/GrabCut.h \
   include/Gmm.h \
 	include/Graph.h \
-	include/PRGraph.h \
 	include/IGraph.h \
-	include/FGraph.h \
 	include/IFGraph.h \
 	include/ibfs/ibfs.h \
 	include/ibfs/iibfs.h \

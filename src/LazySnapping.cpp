@@ -20,10 +20,8 @@
 #include "include/SegmentationData.h"
 #include "include/UserInput.h"
 #include "include/IGraph.h"
-#include "include/FGraph.h"
 #include "include/IFGraph.h"
 #include "include/Graph.h"
-#include "include/PRGraph.h"
 #include "include/gcgraph.hpp"
 #include "include/maxflow-v3.03/graph.h"
 #include "include/ibfs/ibfs.h"
@@ -154,14 +152,12 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define B_MAXFLOW 0
 #define IB_MAXFLOW 0
 #define MY_IB_MAXFLOW 0
-#define PR_MAXFLOW 0
 #define OPENCV_MAXFLOW 0
 #define IGRAPH 0
-#define FGRAPH 0
 #define IFGRAPH 0
 
 #if MY_MAXFLOW
-  user::Graph<double> mygraph(vtx_count, 2 * edge_count, marked_image);
+  user::Graph<double> mygraph(vtx_count, 2 * edge_count);
 #endif
 
 #if B_MAXFLOW
@@ -176,8 +172,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
   // IBFSGraph graph;
   graph.initSize(vtx_count, edge_count);
-#elif PR_MAXFLOW
-  PRGraph<double> graph(vtx_count, 2 * edge_count, width, height, marked_image);
+  // graph.initSize(vtx_count, width, height, EdgePunishItem);
 #endif
 
 #if MY_IB_MAXFLOW
@@ -187,10 +182,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 
 #if IGRAPH
   IGraph<double, EPF> igraph(vtx_count, width, height, EdgePunishItem, marked_image);
-#endif
-
-#if FGRAPH
-  FGraph<double, EPF> fgraph(vtx_count, width, height, EdgePunishItem, marked_image);
 #endif
 
 #if IFGRAPH
@@ -240,8 +231,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       graph.addTermWeights(index, e1[0], e1[1]);
 #elif IB_MAXFLOW
       graph.addNode(vtx0, e1[0], e1[1]);
-#elif PR_MAXFLOW
-      graph.AddNode(vtx0, e1[0], e1[1]);
+      // graph.addNode(vtx0, e1[0], e1[1], colour);
+      // graph.AddActiveNodes(x, y);
 #endif
 
 #if MY_IB_MAXFLOW
@@ -252,10 +243,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #if IGRAPH
       igraph.AddNode(vtx0, e1[0], e1[1], colour);
       igraph.AddActiveNodes(x, y);
-#endif
-#if FGRAPH
-      fgraph.AddNode(vtx0, e1[0], e1[1], colour);
-      fgraph.AddActiveNodes(x, y);
 #endif
 #if IFGRAPH
       ifgraph.AddNode(vtx0, e1[0], e1[1], colour);
@@ -281,8 +268,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
-#elif PR_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
       if ((graph_vtx_map == NULL && x > 0 && y > 0) || IS_BUILD_EDGE(index - width - 1)) {
@@ -301,8 +286,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
-#elif PR_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
       if ((graph_vtx_map == NULL && y > 0) || IS_BUILD_EDGE(index - width)) {
@@ -321,8 +304,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
-#elif PR_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
       if ((graph_vtx_map == NULL && x < width - 1 && y > 0) || IS_BUILD_EDGE(index - width + 1)) {
@@ -341,8 +322,6 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         graph.addEdges(vtx0, vtx1, e2, e2);
 #elif IB_MAXFLOW
         graph.addEdge(vtx0, vtx1, e2, e2);
-#elif PR_MAXFLOW
-        graph.AddEdge(vtx0, vtx1, e2);
 #endif
       }
 #endif
@@ -378,12 +357,6 @@ ct.PrintTime();
   graph.computeMaxFlow();
 // ct.ContEnd();
 // ct.PrintTime();
-#elif PR_MAXFLOW
-ct.ContBegin();
-  graph.Initialization();
-  graph.MaxFlow();
-ct.ContEnd();
-ct.PrintTime();
 #endif
 
 #if MY_IB_MAXFLOW
@@ -395,13 +368,6 @@ ct.PrintTime();
   igraph.MaxFlow();
 // ct.ContEnd();
 // ct.PrintTime();
-#endif
-
-#if FGRAPH
-ct.ContBegin();
-  fgraph.MaxFlow();
-ct.ContEnd();
-ct.PrintTime();
 #endif
 
 #if IFGRAPH
@@ -419,7 +385,7 @@ ct.PrintTime();
       // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
       //     mygraph.IsBelongToSource(vtx0)) {
       if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-          graph.isNodeOnSrcSide(vtx0)) {
+          ifgraph.IsBelongToSource(vtx0)) {
         printf("error pixel\n");
       }
     }
@@ -472,20 +438,8 @@ ct.PrintTime();
         } else {
           SET_PIXEL(marked_image, index, BACKGROUND);
         }
-#elif PR_MAXFLOW 
-        if (graph.IsBelongToSource(vtx0)) {
-          SET_PIXEL(marked_image, index, SUBJECT);
-        } else {
-          SET_PIXEL(marked_image, index, BACKGROUND);
-        }
 #endif
-#if FGRAPH
-        if (fgraph.IsBelongToSource(vtx0)) {
-          SET_PIXEL(marked_image, index, SUBJECT);
-        } else {
-          SET_PIXEL(marked_image, index, BACKGROUND);
-        }
-#elif MY_IB_MAXFLOW
+#if MY_IB_MAXFLOW
         if (ibgraph.isNodeOnSrcSide(vtx0)) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
