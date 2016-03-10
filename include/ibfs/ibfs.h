@@ -153,6 +153,8 @@ private:
   IBFSInitMode initMode;
   int m_orphan_count;
   int m_path;
+  double m_time;
+  double m_time2;
   void initGraphFast();
   void initNodes();
 };

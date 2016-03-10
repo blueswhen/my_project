@@ -67,6 +67,7 @@ class Graph {
       , m_child_edge(NULL)
       , m_needed_flow(0)
       , m_next_node(NULL)
+      , m_in_stack(false)
 #endif
       , m_id(0) {}
     CapType m_excess;
@@ -83,6 +84,7 @@ class Graph {
     Edge* m_child_edge;
     CapType m_needed_flow;
     Node* m_next_node;
+    bool m_in_stack;
 #endif
     int m_id;
   };
@@ -160,6 +162,8 @@ class Graph {
   std::queue<Node*> m_orphan_nodes;
   int m_path;
   int m_count;
+  double m_time;
+  double m_time2;
   // ImageData<int>* m_marked_image;
 #ifdef IFAL
   CapType m_source_res_flow;
@@ -180,6 +184,8 @@ Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
   , m_global_timestamp(0)
   , m_path(0)
   , m_count(0)
+  , m_time(0)
+  , m_time2(0)
   // , m_marked_image(marked_image)
 #ifdef IFAL
   , m_source_res_flow(0)
@@ -289,6 +295,7 @@ void Graph<CapType>::Push(Node* node) {
   Node*& top_node = node->m_node_state == SOURCE ? m_top_source_node : m_top_sink_node;
   node->m_next_node = top_node;
   top_node = node;
+  node->m_in_stack = true;
 }
 
 template <class CapType>
@@ -304,6 +311,7 @@ void Graph<CapType>::Pop(bool node_type) {
   Node* tmp = top_node;
   top_node = top_node->m_next_node;
   tmp->m_next_node = NULL;
+  tmp->m_in_stack = false;
 }
 
 template <class CapType>
@@ -313,7 +321,6 @@ void Graph<CapType>::PushEnoughFlowToOneNode(bool node_type) {
   bool& node_end = node_type == SOURCE ? m_is_source_end : m_is_sink_end;
   CapType& node_res_flow = node_type == SOURCE ? m_source_res_flow : m_sink_res_flow;
 
-  Node* src_node = node;
   CapType push_flow = node->m_excess;
   if (node->m_needed_flow < 0) {
     push_flow = node->m_needed_flow == -INT_MAX ? 0 : node->m_needed_flow;
@@ -349,18 +356,24 @@ void Graph<CapType>::PushEnoughFlowToOneNode(bool node_type) {
     Push(dst_node);
     return;
   }
-  if (src_node->m_child_edge) {
-    Node* child_node = src_node->m_child_edge->m_dst_node;
+  if (node->m_child_edge) {
+    if (node->m_parent_edge == TERMINAL) {
+      node->m_timestamp = m_global_timestamp;
+    }
+    Node* child_node = node->m_child_edge->m_dst_node;
     Edge* flow_edge = node_type == SOURCE ?
-      src_node->m_child_edge : src_node->m_child_edge->m_rev_edge;
+      node->m_child_edge : node->m_child_edge->m_rev_edge;
     if (push_flow) {
-      PushFlow(src_node, child_node, flow_edge, push_flow);
+      PushFlow(node, child_node, flow_edge, push_flow);
     }
     if (!flow_edge->m_edge_capacity && child_node->m_parent_edge) {
-      assert(child_node->m_parent_edge->m_dst_node == src_node);
+      assert(child_node->m_parent_edge->m_dst_node == node);
       AddOrphanNode(child_node);
+    } else if (node->m_timestamp == m_global_timestamp) {
+      child_node->m_timestamp = m_global_timestamp;
+      child_node->m_terminal_dist = node->m_terminal_dist + 1;
     }
-    src_node->m_child_edge = NULL;
+    node->m_child_edge = NULL;
   }
   Pop(node_type);
 }
@@ -462,6 +475,7 @@ void Graph<CapType>::FindNewOrphans(Node* orphan_node) {
 
 template <class CapType>
 void Graph<CapType>::FindNewPath(Node* orphan_node) {
+  bool orphan_in_stack = orphan_node->m_in_stack;
   int dist_min = INIFINITE_DIST;
   Edge* connected_edge_min = NULL;
 
@@ -490,7 +504,7 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
             dst_node->m_terminal_dist = 1;
             break;
           }
-          if (parent_edge == ORPHAN) {
+          if ((orphan_in_stack && dst_node->m_in_stack) || parent_edge == ORPHAN) {
             dist = INIFINITE_DIST;
             break;
           }
@@ -525,12 +539,14 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
 template <class CapType>
 void Graph<CapType>::Adoption() {
   // adopt orphan nodes
-  m_global_timestamp++;
+  // CountTime ct;
+  // ct.ContBegin();
   while (true) {
     Node* orphan_node = GetOrphanNode();
     if (!orphan_node) {
       break;
     }
+    m_count++;
 
     FindNewPath(orphan_node);
 
@@ -538,6 +554,9 @@ void Graph<CapType>::Adoption() {
       FindNewOrphans(orphan_node);
     }
   }
+  m_global_timestamp++;
+  // ct.ContEnd();
+  // m_time += ct.ContResult() * 1000;
 }
 
 template <class CapType>
@@ -673,11 +692,15 @@ CapType Graph<CapType>::MaxFlow() {
     }
 
     if (meet_edge) {
+  // CountTime ct;
+  // ct.ContBegin();
       Augment(meet_edge);
       Adoption();
+  // ct.ContEnd();
+  // m_time2 += ct.ContResult() * 1000;
     }
   }
-  // printf("path = %d\n", m_path);
+  // printf("path = %d, path time = %f, orphan count = %d, time = %f\n", m_path, m_time2, m_count, m_time);
   return m_flow;
 }
 

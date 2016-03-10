@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include "ibfs.h"
+#include "include/CountTime.h"
 
 #define REMOVE_SIBLING(x, tmp) \
   { (tmp) = (x)->parent->head->firstSon; \
@@ -169,6 +170,8 @@ void IBFSGraph::initGraphFast()
   initNodes();
   m_path = 0;
   m_orphan_count = 0;
+  m_time = 0;
+  m_time2 = 0;
 }
 
 // @ret: minimum orphan level
@@ -180,7 +183,6 @@ template<bool sTree> int IBFSGraph::augmentPath(Node *x, double push)
 
   for (; ; x=a->head)
   {
-    m_path++;
     if (x->excess) break;
     a = x->parent;
     if (sTree) {
@@ -249,6 +251,7 @@ template<bool sTree> int IBFSGraph::augmentExcess(Node *x, double push)
       push += (sTree ? -(x->excess) : x->excess);
       x->excess = 0;
     }
+    m_path++;
 
     // push flow
     // note: push != 0
@@ -380,6 +383,7 @@ void IBFSGraph::augment(Arc *bridge)
     bridge->rev->isRevResidual = 0;
   }
   flow -= bottleneck;
+  m_path++;
 
   // augment T
   x = bridge->head;
@@ -411,9 +415,11 @@ template<bool sTree> void IBFSGraph::adoption()
   Arc *aEnd;
   int minLabel;
 
-  m_orphan_count++;
+  // CountTime ct;
+  // ct.ContBegin();
  	while (m_orphanFirst != IB_ORPHANS_END)
 	{
+    m_orphan_count++;
 		x = m_orphanFirst;
 		m_orphanFirst = x->nextPtr;
     if (sTree) uniqOrphansS++;
@@ -514,6 +520,8 @@ template<bool sTree> void IBFSGraph::adoption()
       orphanFree<sTree>(x);
     }
   }
+  // ct.ContEnd();
+  // m_time += ct.ContResult() * 1000;
 }
 
 template<bool dirS> void IBFSGraph::growth()
@@ -550,7 +558,11 @@ template<bool dirS> void IBFSGraph::growth()
       else if (dirS ? (y->label < 0) : (y->label > 0))
       {
         // augment
+  // CountTime ct;
+  // ct.ContBegin();
         augment(dirS ? a : (a->rev));
+  // ct.ContEnd();
+  // m_time2 += ct.ContResult() * 1000;
         if (x->label != (dirS ? (topLevelS-1) : -(topLevelT-1))) {
           break;
         }
@@ -600,6 +612,6 @@ double IBFSGraph::computeMaxFlow(bool initialDirS, bool allowIncrements)
     else if (uniqOrphansT < uniqOrphansS) dirS=false;
     else dirS=true;
   }
-  // printf("path = %d, orphan count = %d, flow = %f\n", m_path, m_orphan_count, flow);
+  // printf("path = %d, path time = %f, orphan count = %d, orphan time = %f\n", m_path, m_time2, m_orphan_count, m_time);
   return flow;
 }
