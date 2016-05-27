@@ -35,6 +35,7 @@ class Graph {
   Graph(int max_nodes_number, int max_edges_number);
   void AddNode(int node_id, CapType source_capacity, CapType sink_capacity);
   void AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity);
+  void Init();
   CapType MaxFlow();
   bool IsBelongToSource(int node_id);
 
@@ -483,6 +484,7 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
   bool orphan_in_stack = orphan_node->m_in_stack;
   int dist_min = INIFINITE_DIST;
   Edge* connected_edge_min = NULL;
+  CapType cap_max = 0;
 
   for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
     Edge* connected_edge = &orphan_node->m_out_edges[i];
@@ -495,6 +497,7 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
       }
       Node* dst_node = connected_edge->m_dst_node;
       Edge* parent_edge = dst_node->m_parent_edge;
+      CapType dst_cap = 0;
       if (parent_edge) {
         int dist = 0;
         while (true) {
@@ -507,6 +510,7 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
           if (parent_edge == TERMINAL) {
             dst_node->m_timestamp = m_global_timestamp;
             dst_node->m_terminal_dist = 1;
+            dst_cap = ABS(dst_node->m_excess);
             break;
           }
           if ((orphan_in_stack && dst_node->m_in_stack) || parent_edge == ORPHAN) {
@@ -517,9 +521,10 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
           dst_node = parent_edge->m_dst_node;
         }
         if (dist < INIFINITE_DIST) {
-          if (dist < dist_min) {
+          if (dist < dist_min || (dist == dist_min && dst_cap > cap_max)) {
             connected_edge_min = connected_edge;
             dist_min = dist;
+            cap_max = dst_cap;
             if (dist_min == 1) {
               break;
             }
@@ -640,7 +645,7 @@ void Graph<CapType>::Augment(Edge* meet_edge) {
 }
 
 template <class CapType>
-CapType Graph<CapType>::MaxFlow() {
+void Graph<CapType>::Init() {
   // get active nodes
   for (int i = 0; i < m_nodes.size(); ++i) {
     Node* node = &m_nodes[i];
@@ -660,12 +665,15 @@ CapType Graph<CapType>::MaxFlow() {
 #endif
     }
   }
+}
 
+template <class CapType>
+CapType Graph<CapType>::MaxFlow() {
+  // CountTime ct;
   Node* at_node = NULL;
   Edge* meet_edge = NULL;
   int path = 0;
   bool sink_empty = false;
-  CountTime ct;
   double time = 0;
   while (true) {
     if (meet_edge == NULL || at_node->m_parent_edge == NULL) {
