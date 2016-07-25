@@ -144,7 +144,6 @@ class Graph {
   void Push(Node* node);
   Node*& Top(bool node_type);
   void Pop(bool node_type);
-  void CoordinateFinalFlow(bool node_type, CapType c_flow);
   void PushEnoughFlowToOneNode(bool node_type);
 
   void PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node);
@@ -292,7 +291,6 @@ bool Graph<CapType>::Empty(bool node_type) {
 
 template <class CapType>
 void Graph<CapType>::Push(Node* node) {
-  // assert(!node->m_in_stack);
   Node*& top_node = node->m_node_state == SOURCE ? m_top_source_node : m_top_sink_node;
   node->m_next_node = top_node;
   top_node = node;
@@ -315,29 +313,11 @@ void Graph<CapType>::Pop(bool node_type) {
   tmp->m_in_stack = false;
   tmp->m_child_edge = NULL;
   if (tmp->m_parent_edge == TERMINAL) {
-    // assert(tmp->m_terminal_dist == 1);
     tmp->m_timestamp = m_global_timestamp;
   } else if (tmp->m_parent_edge && tmp->m_parent_edge != ORPHAN) {
     tmp->m_terminal_dist = tmp->m_parent_edge->m_dst_node->m_terminal_dist + 1;
     tmp->m_timestamp = tmp->m_parent_edge->m_dst_node->m_timestamp;
   }
-}
-
-template <class CapType>
-void Graph<CapType>::CoordinateFinalFlow(bool node_type, CapType c_flow) {
-  bool& node_end = node_type == SOURCE ? m_is_source_end : m_is_sink_end;
-  Node* top_node = Top(node_type);
-  if (top_node->m_needed_flow < 0) {
-    top_node->m_needed_flow = top_node->m_needed_flow + c_flow;
-  } else {
-    top_node->m_needed_flow = c_flow - ABS(top_node->m_excess);
-  }
-  Same(top_node->m_needed_flow, 0);
-  if (top_node->m_needed_flow == 0 && top_node->m_child_edge) {
-    Pop(node_type);
-  }
-  // assert(top_node->m_needed_flow <= 0);
-  node_end = true;
 }
 
 template <class CapType>
@@ -375,6 +355,8 @@ void Graph<CapType>::PushEnoughFlowToOneNode(bool node_type) {
     } else {
       minus_flow = src_nd_flow;
       dst_node->m_needed_flow = -src_nd_flow;
+      // assert(node->m_needed_flow);
+      // assert(dst_node->m_parent_edge == TERMINAL);
     }
     SetResFlow(node_type, minus_flow);
     Push(dst_node);
@@ -387,18 +369,10 @@ void Graph<CapType>::PushEnoughFlowToOneNode(bool node_type) {
     if (push_flow) {
       PushFlow(node, child_node, flow_edge, push_flow);
     }
-    if (node->m_parent_edge == TERMINAL && !node->m_excess) {
-      AddOrphanNode(node);
-    }
     if (!flow_edge->m_edge_capacity && child_node->m_parent_edge) {
       // assert(child_node->m_parent_edge->m_dst_node == node);
       AddOrphanNode(child_node);
     }
-    // if (node->m_excess) {
-    //   // assert(node->m_parent_edge == TERMINAL);
-    // } else {
-    //   // assert(node->m_parent_edge != TERMINAL);
-    // }
   }
   Pop(node_type);
 }
@@ -429,13 +403,27 @@ void Graph<CapType>::PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node
     if (!Empty(SOURCE) && (m_source_res_flow > m_sink_res_flow || Empty(SINK))) {
       if (m_source_res_flow < m_sink_res_flow && !is_source_once) {
         is_source_once = true;
-        CoordinateFinalFlow(SOURCE, m_sink_res_flow - m_source_res_flow);
+        Node* top_node = Top(SOURCE);
+        if (top_node->m_needed_flow < 0) {
+          top_node->m_needed_flow = top_node->m_needed_flow + m_sink_res_flow - m_source_res_flow;
+        } else {
+          top_node->m_needed_flow = -top_node->m_excess + m_sink_res_flow - m_source_res_flow;
+        }
+        // assert(top_node->m_needed_flow <= 0);
+        m_is_source_end = true;
       }
       PushEnoughFlowToOneNode(SOURCE);
     } else {
       if (m_source_res_flow > m_sink_res_flow && !is_sink_once) {
         is_sink_once = true;
-        CoordinateFinalFlow(SINK, m_source_res_flow - m_sink_res_flow);
+        Node* top_node = Top(SINK);
+        if (top_node->m_needed_flow < 0) {
+          top_node->m_needed_flow = top_node->m_needed_flow + m_source_res_flow - m_sink_res_flow;
+        } else {
+          top_node->m_needed_flow = top_node->m_excess + m_source_res_flow - m_sink_res_flow;
+        }
+        // assert(top_node->m_needed_flow <= 0);
+        m_is_sink_end = true;
       }
       PushEnoughFlowToOneNode(SINK);
     }
@@ -533,10 +521,6 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
                dst_node = dst_node->m_parent_edge->m_dst_node) {
             dst_node->m_timestamp = m_global_timestamp;
             dst_node->m_terminal_dist = dist--;
-            // assert(dst_node->m_parent_edge != ORPHAN);
-            if (dst_node->m_parent_edge == TERMINAL) {
-              break;
-            }
           }
         }
       }
@@ -568,7 +552,6 @@ void Graph<CapType>::Adoption() {
     }
   }
   m_global_timestamp++;
-
   // ct.ContEnd();
   // m_time += ct.ContResult() * 1000;
 }
@@ -726,7 +709,7 @@ CapType Graph<CapType>::MaxFlow() {
   // m_time2 += ct.ContResult() * 1000;
     }
   }
-  printf("path = %d, path time = %f, orphan count = %d, time = %f\n", m_path, m_time2, m_count, m_time);
+  // printf("path = %d, path time = %f, orphan count = %d, time = %f\n", m_path, m_time2, m_count, m_time);
   return m_flow;
 }
 
