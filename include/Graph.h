@@ -16,11 +16,40 @@
 #define ORPHAN reinterpret_cast<Edge*>(2)
 #define INIFINITE_DIST INT_MAX
 #define NEIGHBOUR 8
+#define HALF_NEIGHBOUR 4
+#define HALF_NEIGHBOUR_ARR_INDEX FOUR_ARR_INDEX
+#define NEIGHBOUR_ARR_INDEX EIGHT_ARR_INDEX
 #define T 50
 #define LT 10000
 
 // no ibfs
 #define IFAL
+#define ENABLE_DYNAMIC_EDGE
+
+#ifdef ENABLE_DYNAMIC_EDGE
+typedef double (*EPF)(int src_node_colour, int dst_node_colour);
+const double graph_div_sqrt2 = 1 / sqrt(2.0f);
+#endif
+
+#define FOUR_ARR_INDEX(node_x, node_y, image_width, image_height) \
+{ \
+  node_y * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + node_x, \
+  std::max(node_y - 1, 0) * image_width + std::min(image_width - 1, node_x + 1) \
+}
+
+#define EIGHT_ARR_INDEX(node_x, node_y, image_width, image_height) \
+{ \
+  node_y * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + std::max(0, node_x - 1), \
+  std::max(node_y - 1, 0) * image_width + node_x, \
+  std::max(node_y - 1, 0) * image_width + std::min(image_width - 1, node_x + 1), \
+  node_y * image_width + std::min(image_width - 1, node_x + 1), \
+  std::min(node_y + 1, image_height - 1) * image_width + std::min(image_width - 1, node_x + 1), \
+  std::min(node_y + 1, image_height - 1) * image_width + node_x, \
+  std::min(node_y + 1, image_height - 1) * image_width + std::max(0, node_x - 1) \
+}
 
 namespace user {
 
@@ -32,6 +61,11 @@ class Graph {
     SINK,
     UNKNOWN
   };
+#ifdef ENABLE_DYNAMIC_EDGE
+  Graph(int max_nodes_number, int image_width, int image_height, EPF epf);
+  void AddNode(int node_id, CapType source_capacity, CapType sink_capacity, int node_colour);
+  void AddActiveNodes(int node_x, int node_y);
+#endif
   Graph(int max_nodes_number, int max_edges_number);
   void AddNode(int node_id, CapType source_capacity, CapType sink_capacity);
   void AddEdge(int src_node_id, int dst_node_id, CapType edge_capacity);
@@ -70,6 +104,9 @@ class Graph {
       , m_next_node(NULL)
       , m_in_stack(false)
 #endif
+#ifdef ENABLE_DYNAMIC_EDGE
+      , m_is_gotten_all_edges(false)
+#endif
       , m_id(0) {}
     CapType m_excess;
     NodeState m_node_state;
@@ -87,8 +124,18 @@ class Graph {
     Node* m_next_node;
     bool m_in_stack;
 #endif
+#ifdef ENABLE_DYNAMIC_EDGE
+    bool m_is_gotten_all_edges;
+    int m_node_colour;
+#endif
     int m_id;
   };
+
+#ifdef ENABLE_DYNAMIC_EDGE
+  Edge* CreateEdge(Node* src_node, Node* dst_node, double punish_factor,
+                   int edge_index, int rev_edge_index);
+  void CreateOutEdges(Node* cen_node);
+#endif
 
   void AddActiveNodeBack(Node* node) {
     if (!node->m_is_active) {
@@ -173,8 +220,122 @@ class Graph {
   Node* m_top_source_node;
   Node* m_top_sink_node;
 #endif
+#ifdef ENABLE_DYNAMIC_EDGE
+  int m_image_width;
+  int m_image_height;
+  EPF m_epf;
+#endif
   CapType m_flow;
 };
+
+#ifdef ENABLE_DYNAMIC_EDGE
+template <class CapType>
+Graph<CapType>::Graph(int max_nodes_number, int image_width, int image_height, EPF epf)
+  : m_nodes(std::vector<Node>(max_nodes_number))
+  , m_first_at_node(NULL)
+  , m_last_at_node(NULL)
+  , m_global_timestamp(1)
+  , m_path(0)
+  , m_count(0)
+  , m_time(0)
+  , m_time2(0)
+  // , m_marked_image(marked_image)
+#ifdef IFAL
+  , m_source_res_flow(0)
+  , m_is_source_end(false)
+  , m_sink_res_flow(0)
+  , m_is_sink_end(false)
+  , m_top_source_node(NULL)
+  , m_top_sink_node(NULL)
+#endif
+  , m_flow(0)
+  , m_image_width(image_width)
+  , m_image_height(image_height)
+  , m_epf(epf) {}
+
+template <class CapType>
+void Graph<CapType>::AddNode(int node_id, CapType source_capacity, CapType sink_capacity, int node_colour) {
+  AddNode(node_id, source_capacity, sink_capacity);
+  m_nodes[node_id].m_node_colour = node_colour;
+}
+
+template <class CapType>
+void Graph<CapType>::AddActiveNodes(int node_x, int node_y) {
+  int index = node_y * m_image_width + node_x;
+  Node* cen_node = &m_nodes[index];
+  int arr_index[HALF_NEIGHBOUR] =
+    HALF_NEIGHBOUR_ARR_INDEX(node_x, node_y, m_image_width, m_image_height);
+  for (int i = 0; i < HALF_NEIGHBOUR; ++i) {
+    Node* arr_node = &m_nodes[arr_index[i]];
+    if (arr_index[i] < index && cen_node->m_node_state != arr_node->m_node_state) {
+      AddActiveNodeBack(cen_node);
+      AddActiveNodeBack(arr_node);
+      // break;
+    }
+  }
+}
+
+template <class CapType>
+typename Graph<CapType>::Edge* Graph<CapType>::CreateEdge(
+  Node* src_node, Node* dst_node, double punish_factor, int edge_index, int rev_edge_index) {
+  Edge* edge = &src_node->m_out_edges[edge_index];
+  Edge* rev_edge = &dst_node->m_out_edges[rev_edge_index];
+  CapType cap = punish_factor * m_epf(src_node->m_node_colour, dst_node->m_node_colour);
+  edge->m_edge_capacity = cap;
+  edge->m_rev_edge = rev_edge;
+  edge->m_dst_node = dst_node;
+  rev_edge->m_edge_capacity = cap;
+  rev_edge->m_rev_edge = edge;
+  rev_edge->m_dst_node = src_node;
+  return edge;
+}
+
+template <class CapType>
+void Graph<CapType>::CreateOutEdges(Node* cen_node) {
+  // assert(cen_node != NULL);
+  if (cen_node->m_is_gotten_all_edges) {
+    return;
+  }
+  int coordinate = cen_node->m_id;
+  int y_node = coordinate / m_image_width;
+  int x_node = coordinate - y_node * m_image_width;
+  int arr_nodes_idx[NEIGHBOUR] = 
+    NEIGHBOUR_ARR_INDEX(x_node, y_node, m_image_width, m_image_height);
+  if (y_node == 0) {
+    arr_nodes_idx[1] = coordinate;
+    arr_nodes_idx[3] = coordinate;
+  } else if (y_node == m_image_height - 1) {
+    arr_nodes_idx[5] = coordinate;
+    arr_nodes_idx[7] = coordinate;
+  }
+  if (x_node == 0) {
+    arr_nodes_idx[1] = coordinate;
+    arr_nodes_idx[7] = coordinate;
+  } else if (x_node == m_image_width - 1) {
+    arr_nodes_idx[3] = coordinate;
+    arr_nodes_idx[5] = coordinate;
+  }
+  double punish_factor = 0;
+  for (int i = 0; i < NEIGHBOUR; ++i) {
+    if (cen_node->m_id == arr_nodes_idx[i]) {
+      continue;
+    }
+    Node* arr_node = &m_nodes[arr_nodes_idx[i]];
+    if (cen_node->m_out_edges[i].m_dst_node == NULL) {
+      if (ABS(arr_nodes_idx[i] - cen_node->m_id) == 1 ||
+          ABS(arr_nodes_idx[i] - cen_node->m_id) == m_image_width) {
+        punish_factor = 1;
+      } else {
+        punish_factor = graph_div_sqrt2;
+      }
+      int rev_idx = i - 4 < 0 ? i + 4 : i - 4;
+      assert(arr_node->m_out_edges[rev_idx].m_dst_node == NULL);
+      CreateEdge(cen_node, arr_node, punish_factor, i, rev_idx);
+    }
+  }
+  cen_node->m_is_gotten_all_edges = true;
+}
+#endif
 
 template <class CapType>
 Graph<CapType>::Graph(int max_nodes_number, int max_edges_number)
@@ -329,6 +490,7 @@ void Graph<CapType>::PushEnoughFlowToOneNode(bool node_type) {
 
   CapType push_flow = node->m_excess;
   if (node->m_needed_flow < 0) {
+    // push_flow = node->m_needed_flow == -INT_MAX ? 0 : node->m_needed_flow;
     push_flow = node->m_needed_flow;
     node->m_needed_flow = 0;
   }
@@ -409,6 +571,9 @@ void Graph<CapType>::PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node
         } else {
           top_node->m_needed_flow = -top_node->m_excess + m_sink_res_flow - m_source_res_flow;
         }
+        // if (top_node->m_needed_flow == 0) {
+        //   top_node->m_needed_flow = -INT_MAX; 
+        // }
         // assert(top_node->m_needed_flow <= 0);
         m_is_source_end = true;
       }
@@ -422,6 +587,9 @@ void Graph<CapType>::PushEnoughFlowToTwoNodes(Node* source_node, Node* sink_node
         } else {
           top_node->m_needed_flow = top_node->m_excess + m_source_res_flow - m_sink_res_flow;
         }
+        // if (top_node->m_needed_flow == 0) {
+        //   top_node->m_needed_flow = -INT_MAX; 
+        // }
         // assert(top_node->m_needed_flow <= 0);
         m_is_sink_end = true;
       }
@@ -449,13 +617,20 @@ void Graph<CapType>::PushEnoughFlow(
 template <class CapType>
 void Graph<CapType>::FindNewOrphans(Node* orphan_node) {
   // assert(!orphan_node->m_parent_edge);
+#ifndef ENABLE_DYNAMIC_EDGE
   for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+#else
+  for (int i = 0; i < NEIGHBOUR; ++i) {
+    if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+      continue;
+    }
+#endif
     Edge* connected_edge = &orphan_node->m_out_edges[i];
     Node* dst_node = connected_edge->m_dst_node;
     Edge* parent_edge = dst_node->m_parent_edge;
 
+    AddActiveNodeBack(dst_node);
     if (dst_node->m_node_state == orphan_node->m_node_state) {
-      AddActiveNodeBack(dst_node);
       if (parent_edge && parent_edge != TERMINAL && parent_edge != ORPHAN &&
           parent_edge->m_dst_node == orphan_node) {
         AddOrphanNode(dst_node);
@@ -471,7 +646,15 @@ void Graph<CapType>::FindNewPath(Node* orphan_node) {
   Edge* connected_edge_min = NULL;
   CapType cap_max = 0;
 
+#ifndef ENABLE_DYNAMIC_EDGE
   for (int i = 0; i < orphan_node->m_out_edges_num; ++i) {
+#else
+  CreateOutEdges(orphan_node);
+  for (int i = 0; i < NEIGHBOUR; ++i) {
+    if (orphan_node->m_out_edges[i].m_dst_node == NULL) {
+      continue;
+    }
+#endif
     Edge* connected_edge = &orphan_node->m_out_edges[i];
     if (connected_edge->m_dst_node->m_node_state == orphan_node->m_node_state) {
       CapType capacity = orphan_node->m_node_state == SINK ?
@@ -673,7 +856,15 @@ CapType Graph<CapType>::MaxFlow() {
     meet_edge = NULL;
 
     // grow source tree and sink tree
+#ifndef ENABLE_DYNAMIC_EDGE
     for (int i = 0; i < at_node->m_out_edges_num; ++i) {
+#else
+    CreateOutEdges(at_node);
+    for (int i = 0; i < NEIGHBOUR; ++i) {
+      if (at_node->m_out_edges[i].m_dst_node == NULL) {
+        continue;
+      }
+#endif
       Edge* connected_edge = &at_node->m_out_edges[i];
       CapType capacity = at_node->m_node_state == SINK ?
                          connected_edge->m_rev_edge->m_edge_capacity :
@@ -726,4 +917,10 @@ bool Graph<CapType>::IsBelongToSource(int node_id) {
 #undef IB_PREVPTR_EXCESS
 #undef IB_NEXTPTR_EXCESS
 #undef IFAL
+#undef ENABLE_DYNAMIC_EDGE
+#undef HALF_NEIGHBOUR
+#undef HALF_NEIGHBOUR_ARR_INDEX
+#undef NEIGHBOUR_ARR_INDEX
+#undef FOUR_ARR_INDEX
+#undef EIGHT_ARR_INDEX 
 #endif  // INCLUDE_GRAPH_H_

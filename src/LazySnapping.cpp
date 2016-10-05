@@ -19,9 +19,9 @@
 #include "include/Segmentation.h"
 #include "include/SegmentationData.h"
 #include "include/UserInput.h"
+#include "include/Graph.h"
 #include "include/IGraph.h"
 #include "include/IFGraph.h"
-#include "include/Graph.h"
 #include "include/gcgraph.hpp"
 #include "include/maxflow-v3.03/graph.h"
 #include "include/ibfs/ibfs.h"
@@ -149,7 +149,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 
 #define ADD_EDGE 1
 #define MY_MAXFLOW 1
-#define B_MAXFLOW 0
+#define BK_MAXFLOW 0
 #define IB_MAXFLOW 0
 #define MY_IB_MAXFLOW 0
 #define OPENCV_MAXFLOW 0
@@ -157,10 +157,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define IFGRAPH 0
 
 #if MY_MAXFLOW
-  user::Graph<double> mygraph(vtx_count, 2 * edge_count);
+  // user::Graph<double> mygraph(vtx_count, 2 * edge_count);
+  user::Graph<double> mygraph(vtx_count, width, height, EdgePunishItem);
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
   GraphType bkgraph(vtx_count, edge_count);
   // GraphType bkgraph(vtx_count, width, height, EdgePunishItem);
 #endif
@@ -169,8 +170,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
 #elif IB_MAXFLOW
-  IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
-  // IBFSGraph graph;
+  // IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
+  IBFSGraph graph;
   graph.initSize(vtx_count, edge_count);
   // graph.initSize(vtx_count, width, height, EdgePunishItem);
 #endif
@@ -217,10 +218,12 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       }
       int vtx0 = BUILD_VTX(index);
 #if MY_MAXFLOW
-      mygraph.AddNode(vtx0, e1[0], e1[1]);
+      // mygraph.AddNode(vtx0, e1[0], e1[1]);
+      mygraph.AddNode(vtx0, e1[0], e1[1], colour);
+      mygraph.AddActiveNodes(x, y);
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
       bkgraph.add_node();
       bkgraph.add_tweights(vtx0, e1[0], e1[1]);
       // bkgraph.add_tweights(vtx0, e1[0], e1[1], colour);
@@ -261,7 +264,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         mygraph.AddEdge(vtx0, vtx1, e2);
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
         bkgraph.add_edge(vtx0, vtx1, e2, e2);
 #endif
 #if OPENCV_MAXFLOW
@@ -279,7 +282,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         mygraph.AddEdge(vtx0, vtx1, e2);
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
         bkgraph.add_edge(vtx0, vtx1, e2, e2);
 #endif
 #if OPENCV_MAXFLOW
@@ -297,7 +300,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         mygraph.AddEdge(vtx0, vtx1, e2);
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
         bkgraph.add_edge(vtx0, vtx1, e2, e2);
 #endif
 #if OPENCV_MAXFLOW
@@ -315,7 +318,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         mygraph.AddEdge(vtx0, vtx1, e2);
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
         bkgraph.add_edge(vtx0, vtx1, e2, e2);
 #endif
 #if OPENCV_MAXFLOW
@@ -335,12 +338,13 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 CountTime ct;
 #if MY_MAXFLOW
 // ct.ContBegin();
+  // mygraph.Init();
   mygraph.MaxFlow();
 // ct.ContEnd();
 // ct.PrintTime();
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
 // ct.ContBegin();
   bkgraph.maxflow();
 // ct.ContEnd();
@@ -382,10 +386,10 @@ ct.PrintTime();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int vtx0 = BUILD_VTX(y * width + x);
-      // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-      //     mygraph.IsBelongToSource(vtx0)) {
       if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
-          ifgraph.IsBelongToSource(vtx0)) {
+          mygraph.IsBelongToSource(vtx0)) {
+      // if ((bkgraph.what_segment(vtx0) == GraphType::SOURCE) !=
+      //     ifgraph.IsBelongToSource(vtx0)) {
         printf("error pixel\n");
       }
     }
@@ -419,7 +423,7 @@ ct.PrintTime();
         }
 #endif
 
-#if B_MAXFLOW
+#if BK_MAXFLOW
         if (bkgraph.what_segment(vtx0) == GraphType::SOURCE) {
           SET_PIXEL(marked_image, index, SUBJECT);
         } else {
