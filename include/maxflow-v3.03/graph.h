@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <algorithm>
 #include "include/utils.h"
+#include "include/CountTime.h"
 
 // #define ENABLE_BFS
 // #define ENABLE_PAR
@@ -399,7 +400,8 @@ private:
   node        *queue_first[2], *queue_last[2];  // list of active nodes
   nodeptr        *orphan_first, *orphan_last;    // list of pointers to orphans
   int          TIME;                // monotonically increasing global counter
-  int path;
+  long path;
+  int orphan_count;
   int m_num;
   int m_n;
 
@@ -1462,6 +1464,7 @@ template <typename captype, typename tcaptype, typename flowtype>
     {
       set_orphan_front(i); // add i to the beginning of the adoption list
     }
+    path++;
   }
   i -> tr_cap -= bottleneck;
   if (!i->tr_cap)
@@ -1483,6 +1486,7 @@ template <typename captype, typename tcaptype, typename flowtype>
     {
       set_orphan_front(i); // add i to the beginning of the adoption list
     }
+    path++;
   }
   i -> tr_cap += bottleneck;
   if (!i->tr_cap)
@@ -1742,6 +1746,8 @@ template <typename captype, typename tcaptype, typename flowtype>
   flowtype Graph<captype,tcaptype,flowtype>::maxflow(bool reuse_trees, Block<node_id>* _changed_list)
 {
   path = 0;
+  orphan_count = 0;
+  double time = 0;
   node *i, *j, *current_node = NULL;
   arc *a;
   nodeptr *np, *np_next;
@@ -1864,6 +1870,8 @@ template <typename captype, typename tcaptype, typename flowtype>
 
     if (a)
     {
+      CountTime ct;
+      ct.ContBegin();
 #ifdef ENABLE_PAR
       int origion_length = a->head->DIST + a->sister->head->DIST;
 #endif
@@ -1887,6 +1895,7 @@ template <typename captype, typename tcaptype, typename flowtype>
           nodeptr_block -> Delete(np);
           if (!orphan_first) orphan_last = NULL;
           if (i->parent == ORPHAN) {
+            orphan_count++;
             if (i->is_sink) process_sink_orphan(i);
             else            process_source_orphan(i);
           }
@@ -1905,6 +1914,8 @@ template <typename captype, typename tcaptype, typename flowtype>
         set_active(current_node);
       }
 #endif
+      ct.ContEnd();
+      time += ct.ContResult();
     }
     else current_node = NULL;
   }
@@ -1917,6 +1928,7 @@ template <typename captype, typename tcaptype, typename flowtype>
   }
 
   maxflow_iteration ++;
+  printf("path = %ld, orphan count = %d, time = %f\n", path, orphan_count, time * 1000);
   // printf("m_flow = %f\n", flow);
   // printf("radio = %f\n", m_n/(double)m_num);
   return flow;
