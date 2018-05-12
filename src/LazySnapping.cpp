@@ -33,6 +33,7 @@
 #define K_NUM 60
 #define ITER 10
 #define LAMDA 50
+#define HUGE_MAX 50000
 
 typedef Graph<double, double, double> GraphType;
 typedef double (*EPF)(int src_node_colour, int dst_node_colour);
@@ -41,7 +42,7 @@ using namespace cv;
 
 inline double GetColourDistence(double c_mean[3],
                                 const std::vector<std::vector<double> >& k_means) {
-  double min = DBL_MAX;
+  double min = HUGE_MAX;
   int n = k_means.size();
   for (int i = 0; i < n; ++i) {
     double diff = THREE_DIM_DIST_SQUARE(c_mean, k_means[i]);
@@ -85,11 +86,11 @@ void GraphCutBaseWatershed(const std::vector<std::vector<double> >& k_means_sub,
       e1[0] = bck_dist / sum_dist;
       e1[1] = sub_dist / sum_dist;
     } else if (wri.m_scene == SUBJECT) {
-      e1[0] = DBL_MAX;
+      e1[0] = HUGE_MAX;
       e1[1] = 0;
     } else {
       e1[0] = 0;
-      e1[1] = DBL_MAX;
+      e1[1] = HUGE_MAX;
     }
     graph.add_node();
     graph.add_tweights(i, e1[0], e1[1]);
@@ -157,8 +158,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #define IFGRAPH 0
 
 #if MY_MAXFLOW
-  // user::Graph<double> mygraph(vtx_count, 2 * edge_count);
-  user::Graph<double> mygraph(vtx_count, width, height, EdgePunishItem);
+  user::Graph<double> mygraph(vtx_count, 2 * edge_count);
+  // user::Graph<double> mygraph(vtx_count, width, height, EdgePunishItem);
 #endif
 
 #if BK_MAXFLOW
@@ -170,8 +171,8 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
   GCGraph<double> graph;
   graph.create(vtx_count, edge_count);
 #elif IB_MAXFLOW
-  // IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
-  IBFSGraph graph;
+  IBFSGraph graph(IBFSGraph::IB_INIT_FAST);
+  // IBFSGraph graph;
   graph.initSize(vtx_count, edge_count);
   // graph.initSize(vtx_count, width, height, EdgePunishItem);
 #endif
@@ -210,17 +211,17 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
         e1[0] = bck_dist / sum_dist;
         e1[1] = sub_dist / sum_dist;
       } else if (marked_colour == SUBJECT) {
-        e1[0] = DBL_MAX;
+        e1[0] = HUGE_MAX;
         e1[1] = 0;
       } else {
         e1[0] = 0;
-        e1[1] = DBL_MAX;
+        e1[1] = HUGE_MAX;
       }
       int vtx0 = BUILD_VTX(index);
 #if MY_MAXFLOW
-      // mygraph.AddNode(vtx0, e1[0], e1[1]);
-      mygraph.AddNode(vtx0, e1[0], e1[1], colour);
-      mygraph.AddActiveNodes(x, y);
+      mygraph.AddNode(vtx0, e1[0], e1[1]);
+      // mygraph.AddNode(vtx0, e1[0], e1[1], colour);
+      // mygraph.AddActiveNodes(x, y);
 #endif
 
 #if BK_MAXFLOW
@@ -337,30 +338,30 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #if 1
 CountTime ct;
 #if MY_MAXFLOW
-// ct.ContBegin();
-  // mygraph.Init();
+ct.ContBegin();
+  mygraph.Init();
   mygraph.MaxFlow();
-// ct.ContEnd();
-// ct.PrintTime();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 
 #if BK_MAXFLOW
-// ct.ContBegin();
-  bkgraph.maxflow();
-// ct.ContEnd();
-// ct.PrintTime();
-#endif
-#if OPENCV_MAXFLOW
 ct.ContBegin();
-  graph.maxFlow();
+  bkgraph.maxflow();
 ct.ContEnd();
 ct.PrintTime();
-#elif IB_MAXFLOW
+#endif
+#if OPENCV_MAXFLOW
 // ct.ContBegin();
-  graph.initGraph();
-  graph.computeMaxFlow();
+  graph.maxFlow();
 // ct.ContEnd();
 // ct.PrintTime();
+#elif IB_MAXFLOW
+ct.ContBegin();
+  graph.initGraph();
+  graph.computeMaxFlow();
+ct.ContEnd();
+ct.PrintTime();
 #endif
 
 #if MY_IB_MAXFLOW
@@ -560,11 +561,11 @@ void LazySnapping::Cut(SegmentationData* sd, UserInput* uip) {
     GraphCutBaseWatershed(k_means_sub, k_means_bck, &wrg);
     utils::ExtractContourLine(wrg, ui_image, marked_image);
   } else {
-  CountTime ct;
-  ct.ContBegin();
+  // CountTime ct;
+  // ct.ContBegin();
     GraphCutBasePixel(k_means_sub, k_means_bck, *source_image, marked_image, m_graph_vtx_map);
-  ct.ContEnd();
-  ct.PrintTime();
+  // ct.ContEnd();
+  // ct.PrintTime();
     utils::ExtractContourLine(ui_image, marked_image);
   }
   sd->SetCutStatus(true);
