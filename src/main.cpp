@@ -42,10 +42,10 @@ void ScaleUpRegionArea(int center_x, int center_y, int factor,
   int k = 0;
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
-      if (y == center_y - offset_y - 1 && x >= center_x - offset_x - 1 && x <= center_x + offset_x ||
-          y == center_y + offset_y && x >= center_x - offset_x - 1 && x <= center_x + offset_x || 
-          x == center_x - offset_x - 1 && y >= center_y - offset_y - 1 && y <= center_y + offset_y ||
-          x == center_x + offset_x && y >= center_y - offset_y - 1 && y <= center_y + offset_y) {
+      if ((y == center_y - offset_y - 1 && x >= center_x - offset_x - 1 && x <= center_x + offset_x) ||
+          (y == center_y + offset_y && x >= center_x - offset_x - 1 && x <= center_x + offset_x)|| 
+          (x == center_x - offset_x - 1 && y >= center_y - offset_y - 1 && y <= center_y + offset_y) ||
+          (x == center_x + offset_x && y >= center_y - offset_y - 1 && y <= center_y + offset_y)) {
         SET_PIXEL(new_image, y * 2 * width + x, GREEN);
       } else {
         int colour = GET_PIXEL(src_image, y * width + x);

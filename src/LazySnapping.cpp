@@ -24,8 +24,8 @@
 #include "include/IFGraph.h"
 #include "include/gcgraph.hpp"
 #include "include/maxflow-v3.03/graph.h"
-#include "include/ibfs/ibfs.h"
-#include "include/ibfs/iibfs.h"
+// #include "include/ibfs/ibfs.h"
+// #include "include/ibfs/iibfs.h"
 
 #define START_GRADIENT 10
 // START_MARK_NUM must be positive number
@@ -472,6 +472,7 @@ ct.PrintTime();
 void* fun(void* arg) {
   LazySnapping* ls = (LazySnapping*)arg;
   ls->DoPartition();
+  return NULL;
 }
 
 LazySnapping::LazySnapping(SegmentationData* sd, UserInput* usr_input)

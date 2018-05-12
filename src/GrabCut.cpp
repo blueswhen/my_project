@@ -321,7 +321,7 @@ void CreateFinalMarkedImage(ImageData<int>* marked_image) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int value = GET_PIXEL(marked_image, index);
-      if (value & 1 == 1) {
+      if ((value & 1) == 1) {
         SET_PIXEL(marked_image, index, WHITE);
       } else {
         SET_PIXEL(marked_image, index, BLACK);
@@ -423,9 +423,11 @@ void GrabCut::MakeGraphVtx(const ImageData<int>& marked_image) {
 }
 
 double GetEnergyRegionItem(int colour, Scene scn) {
+  return 0;
 }
 
 double GetEnergyBoundryItem(int colour, int near_colour, Direction drc) {
+  return 0;
 }
 
 void SegmentImageByGraph(const GrapyType& graph, ImageData<int>* marked_image) {

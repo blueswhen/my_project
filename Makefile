@@ -1,35 +1,14 @@
 #Copyright 2014-5 sxniu 
+#macos
 
-CXX = g++
-LIBS = -lopencv_core -lopencv_highgui -lopencv_imgproc
-INCS = -I. -std=c++11 -pthread -fpermissive
-CXXFLAGS = -O4
+CXX = clang++
+LIBS = -L/usr/local/Cellar/opencv@2/2.4.13.6_2/lib \
+       -lopencv_core -lopencv_highgui -lopencv_imgproc
+INCS = -I. \
+       -I/usr/local/Cellar/opencv@2/2.4.13.6_2/include
+CXXFLAGS = -O3 -std=c++11 -pthread -fpermissive -isysroot /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.13.sdk
 
 lazysnapping : \
-  include/utils.h \
-  include/ImageData.h \
-  include/colour.h \
-  include/CountTime.h \
-  include/WatershedRegion.h \
-  include/ui.h \
-  include/Segmentation.h \
-  include/SegmentationData.h \
-  include/LazySnapping.h \
-  include/UserInput.h \
-  include/Lines.h \
-  include/Square.h \
-  include/Lasso.h \
-  include/Data.h \
-  include/GrabCut.h \
-  include/Gmm.h \
-	include/Graph.h \
-	include/IGraph.h \
-	include/IFGraph.h \
-	include/ibfs/ibfs.h \
-	include/ibfs/iibfs.h \
-	include/maxflow-v3.03/graph.h \
-	include/ibfs/ibfs.cpp \
-	include/ibfs/iibfs.cpp \
   src/utils.cpp \
   src/main.cpp \
   src/CountTime.cpp \

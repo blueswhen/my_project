@@ -1564,7 +1564,7 @@ template <typename captype, typename tcaptype, typename flowtype>
     }
   }
 
-  if (i->parent = a0_min)
+  if ((i->parent = a0_min) != 0)
   {
     assert(a0_min->head->is_sink == 0);
     i -> TS = TIME;
@@ -1685,7 +1685,7 @@ template <typename captype, typename tcaptype, typename flowtype>
     }
   }
 
-  if (i->parent = a0_min)
+  if ((i->parent = a0_min) != 0)
   {
     assert(a0_min->head->is_sink == 1);
     i -> TS = TIME;
