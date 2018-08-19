@@ -51,9 +51,9 @@ void Segmentation::ResetUserInput() {
 }
 
 void Segmentation::RemoveLastResult(SegmentationData* sd) {
-  if (!sd->GetCutStatus()) {
-    return;
-  }
+  // if (!sd->GetCutStatus()) {
+  //   return;
+  // }
   ImageData<int>* source_image = sd->GetSourceImageBck();
   ImageData<int>* result_image = sd->GetSourceImage();
   int width = source_image->GetWidth();
@@ -73,18 +73,15 @@ void Segmentation::RemoveLastResult(SegmentationData* sd) {
 bool Segmentation::CheckUserMark(SegmentationData* sd, UserInput* uip) {
   assert(sd != NULL && uip != NULL);
   const ImageData<int>* source_image = sd->GetSourceImageBck();
-  std::vector<int>* sub_mark_index = uip->GetSubjectPoints().first;
-  std::vector<int>* sub_mark_value = uip->GetSubjectPoints().second;
-  std::vector<int>* bck_mark_index = uip->GetBackgroundPoints().first;
-  std::vector<int>* bck_mark_value = uip->GetBackgroundPoints().second;
+  std::vector<UserInput::LinePoint>* sub_mark_points = uip->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* bck_mark_points = uip->GetBackgroundPoints();
 
-  if (sub_mark_index->size() == 0) {
+  if (sub_mark_points->size() == 0) {
     printf("error: no sub line mark\n");
     return false;
   }
-  assert(sub_mark_value->size() == sub_mark_index->size());
   // if no bck line input, replace it with four boards of the image
-  if (bck_mark_index->size() == 0) {
+  if (bck_mark_points->size() == 0) {
     int width = source_image->GetWidth();
     int height = source_image->GetHeight();
     int gap = 0;
@@ -92,16 +89,20 @@ bool Segmentation::CheckUserMark(SegmentationData* sd, UserInput* uip) {
       for (int x = gap; x < width - gap; ++x) {
         int index = y * width + x;
         int colour = GET_PIXEL(source_image, index);
-        bck_mark_index->push_back(index);
-        bck_mark_value->push_back(colour);
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = colour;
+        bck_mark_points->push_back(lp);
       }
     }
     for (int x = gap; x < width - gap; x += width - 2 * gap - 1) {
       for (int y = gap; y < height - gap; ++y) {
         int index = y * width + x;
         int colour = GET_PIXEL(source_image, index);
-        bck_mark_index->push_back(index);
-        bck_mark_value->push_back(colour);
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = colour;
+        bck_mark_points->push_back(lp);
       }
     }
   }

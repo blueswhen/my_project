@@ -8,6 +8,7 @@
 #include "include/SegmentationData.h"
 #include "include/ImageData.h"
 #include "include/ui.h"
+#include "include/utils.h"
 
 Square::Square()
   : UserInput()
@@ -23,50 +24,54 @@ Square::Square(const char* file_name)
   , m_right_down_x(0)
   , m_right_down_y(0) {}
 
+void Square::SetLeftupPosition(int leftup_x, int leftup_y, int colour) {
+  m_left_up_x = std::max(leftup_x, 0);
+  m_left_up_y = std::max(leftup_y, 0);
+  if (colour == UNDEFINE) return;
+
+  ImageData<int>* image = m_sd->GetSourceImage();
+  int width = image->GetWidth();
+  int leftup_pos = m_left_up_y * width + m_left_up_x;
+  SET_PIXEL(image, leftup_pos, colour);
+}
+
+void Square::SetRightdownPosition(int rightdown_x, int rightdown_y, int colour) {
+  assert(m_sd != NULL);
+  ImageData<int>* image = m_sd->GetSourceImage();
+  int width = image->GetWidth();
+  int height = image->GetHeight();
+  m_right_down_y = std::min(rightdown_y, height - 1);
+  m_right_down_x = std::min(rightdown_x, width - 1);
+  if (colour == UNDEFINE) return;
+
+  int rightdown_pos = m_right_down_y * width + m_right_down_x;
+  SET_PIXEL(image, rightdown_pos, colour);
+}
+
 void Square::DrawFirstPointForSub(int x, int y) {
-  m_left_up_x = std::max(x, 0);
-  m_left_up_y = std::max(y, 0);
+  assert(m_sd != NULL);
+  SetLeftupPosition(x, y, m_sd->GetSubjectColour());
+}
+
+void Square::DrawFirstPointForBck(int x, int y) {
+  assert(m_sd != NULL);
+  SetLeftupPosition(x, y, m_sd->GetBackgroundColour());
 }
 
 void Square::DrawSubjectBegin(int x, int y) {
   assert(m_sd != NULL);
+  SetRightdownPosition(x, y);
   m_sd->Reset();
+  ui::DrawSquare(m_sd->GetSourceImage(), m_sd->GetSourceImageBck(), m_left_up_x, m_left_up_y,
+                 m_right_down_x, m_right_down_y, m_sd->GetSubjectColour());
+}
 
-  ImageData<int>* image = m_sd->GetSourceImage();
-  int sub_colour = m_sd->GetSubjectColour();
-
-  int width = image->GetWidth();
-  int height = image->GetHeight();
-
-  int y_leftup = m_left_up_y;
-  int x_leftup = m_left_up_x;
-  int y_rightdown = std::min(y, height - 1);
-  int x_rightdown = std::min(x, width - 1);
-
-  int leftup_pos = y_leftup * width + x_leftup;
-  int rightdown_pos = y_rightdown * width + x_rightdown;
-  int rightup_pos = y_leftup * width + x_rightdown;
-  int leftdown_pos = y_rightdown * width + x_leftup;
-
-  SET_PIXEL(image, leftup_pos, sub_colour);
-
-  std::vector<int> line;
-  line.push_back(leftup_pos);
-  ui::DrawLine(image, &line, rightup_pos, sub_colour, width);
-  line.clear();
-
-  line.push_back(rightup_pos);
-  int index = y_rightdown * width + x_rightdown;
-  ui::DrawLine(image, &line, index, sub_colour, width);
-  line.clear();
-
-  line.push_back(index);
-  ui::DrawLine(image, &line, leftdown_pos, sub_colour, width);
-  line.clear();
-
-  line.push_back(leftdown_pos);
-  ui::DrawLine(image, &line, leftup_pos, sub_colour, width);
-  line.clear();
+void Square::DrawBackgroundBegin(int x, int y) {
+  assert(m_sd != NULL);
+  SetRightdownPosition(x, y);
+  m_sd->Reset();
+  ui::DrawSquare(m_sd->GetSourceImage(), m_sd->GetSourceImageBck(), m_left_up_x, m_left_up_y,
+                 m_right_down_x, m_right_down_y, m_sd->GetBackgroundColour());
 }
 
 void Square::DrawSubjectFinish(int x, int y) {
@@ -75,30 +80,29 @@ void Square::DrawSubjectFinish(int x, int y) {
   int width = image->GetWidth();
   int height = image->GetHeight();
 
-  m_right_down_y = std::min(y, height - 1);
-  m_right_down_x = std::min(x, width - 1);
-
   int y_leftup = m_left_up_y;
   int x_leftup = m_left_up_x;
   int y_rightdown = m_right_down_y;
   int x_rightdown = m_right_down_x;
 
-  m_sub_mark_index.clear();
-  m_sub_mark_value.clear();
-  m_bck_mark_index.clear();
-  m_bck_mark_value.clear();
+  Reset();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       if (y >= y_leftup && y < y_rightdown && x >= x_leftup && x < x_rightdown) {
-        m_sub_mark_index.push_back(index);
-        m_sub_mark_value.push_back(GET_PIXEL(image, index));
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = GET_PIXEL(image, index);
+        m_sub_line_points.push_back(lp);
       } else {
-        m_bck_mark_index.push_back(index);
-        m_bck_mark_value.push_back(GET_PIXEL(image, index));
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = GET_PIXEL(image, index);
+        m_bck_line_points.push_back(lp);
       }
     }
   }
+#if 0
   FILE* file;
   std::string txt_name = m_file_name + "_sr.txt";
   file = fopen(txt_name.c_str(), "w");
@@ -109,4 +113,8 @@ void Square::DrawSubjectFinish(int x, int y) {
   fprintf(file, "%f\n", static_cast<double>(m_right_down_x) / width);
   fprintf(file, "%f\n", static_cast<double>(m_right_down_y) / height);
   fclose(file);
+#endif
+}
+
+void Square::DrawBackgroundFinish(int x, int y) {
 }

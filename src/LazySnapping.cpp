@@ -15,6 +15,8 @@
 #include "include/colour.h"
 #include "include/CountTime.h"
 #include "include/WatershedRegion.h"
+#include "include/Square.h"
+#include "include/Lines.h"
 #include "include/ui.h"
 #include "include/Segmentation.h"
 #include "include/SegmentationData.h"
@@ -210,7 +212,7 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
       if (marked_colour == UNDEFINE) {
         e1[0] = bck_dist / sum_dist;
         e1[1] = sub_dist / sum_dist;
-      } else if (marked_colour == SUBJECT) {
+      } else if (marked_colour == SUBJECT || (marked_colour & RIGHT_HALF) == OLD_SUB) {
         e1[0] = HUGE_MAX;
         e1[1] = 0;
       } else {
@@ -338,11 +340,11 @@ void GraphCutBasePixel(const std::vector<std::vector<double> >& k_means_sub,
 #if 1
 CountTime ct;
 #if MY_MAXFLOW
-ct.ContBegin();
+// ct.ContBegin();
   mygraph.Init();
   mygraph.MaxFlow();
-ct.ContEnd();
-ct.PrintTime();
+// ct.ContEnd();
+// ct.PrintTime();
 #endif
 
 #if BK_MAXFLOW
@@ -414,7 +416,8 @@ ct.PrintTime();
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int marked_colour = GET_PIXEL(marked_image, index);
-      if (marked_colour != IGNORED) {
+      if (marked_colour != IGNORED && (marked_colour & RIGHT_HALF) != OLD_SUB &&
+          (marked_colour & RIGHT_HALF) != OLD_BCK) {
         int vtx0 = BUILD_VTX(index);
 #if MY_MAXFLOW
         if (mygraph.IsBelongToSource(vtx0)) {
@@ -477,44 +480,62 @@ void* fun(void* arg) {
 
 LazySnapping::LazySnapping(SegmentationData* sd, UserInput* usr_input)
   : Segmentation(sd, usr_input)
-  , m_lazy_type(PIXEL) {}
+  , m_lazy_type(PIXEL) {
+    m_graph_vtx_map = new std::unordered_map<int, int>();
+  }
+
+LazySnapping::~LazySnapping() {
+  if (m_graph_vtx_map != NULL) {
+    delete m_graph_vtx_map;
+    m_graph_vtx_map = NULL;
+  }
+}
 
 void LazySnapping::InitMarkedImage(SegmentationData* sd, UserInput* uip) {
   assert(sd != NULL && uip != NULL);
-  std::vector<int>* sub_mark_index = uip->GetSubjectPoints().first;
-  std::vector<int>* bck_mark_index = uip->GetBackgroundPoints().first;
-  assert(sub_mark_index != NULL && bck_mark_index != NULL);
+  std::vector<UserInput::LinePoint>* sub_mark_points = uip->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* bck_mark_points = uip->GetBackgroundPoints();
+  assert(sub_mark_points != NULL && bck_mark_points != NULL);
   ImageData<int>* marked_image = sd->GetMarkedImage();
   int width = marked_image->GetWidth();
   int height = marked_image->GetHeight();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
+      int col = GET_PIXEL(marked_image, y * width + x);
       SET_PIXEL(marked_image, y * width + x, UNDEFINE);
     }
   }
-  for (int i = 0; i < sub_mark_index->size(); ++i) {
-    SET_PIXEL(marked_image, (*sub_mark_index)[i], SUBJECT);
+  for (int i = 0; i < sub_mark_points->size(); ++i) {
+    SET_PIXEL(marked_image, (*sub_mark_points)[i].index, SUBJECT);
   }
-  for (int i = 0; i < bck_mark_index->size(); ++i) {
-    SET_PIXEL(marked_image, (*bck_mark_index)[i], BACKGROUND);
+  for (int i = 0; i < bck_mark_points->size(); ++i) {
+    SET_PIXEL(marked_image, (*bck_mark_points)[i].index, BACKGROUND);
   }
 }
 
-void LazySnapping::InitMarkedImage() {
+void LazySnapping::UpdateSceneVectorFromSourceImage() {
   ImageData<int>* ui_image = m_sd->GetSourceImage();
+  ImageData<int>* src_image = m_sd->GetSourceImageBck();
   ImageData<int>* marked_image = m_sd->GetMarkedImage();
   int width = marked_image->GetWidth();
   int height = marked_image->GetHeight();
+  std::vector<UserInput::LinePoint>* sub_mark_points = m_usr_input->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* bck_mark_points = m_usr_input->GetBackgroundPoints();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
-      int ui_col = GET_PIXEL(ui_image, index);
+      int ui_col = GET_PIXEL(ui_image, index) & RIGHT_HALF;
+      int src_col = GET_PIXEL(src_image, index);
       if (ui_col == m_sd->GetSubjectColour()) {
-        SET_PIXEL(marked_image, index, SUBJECT);
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = src_col;
+        sub_mark_points->push_back(lp);
       } else if (ui_col == m_sd->GetBackgroundColour()) {
-        SET_PIXEL(marked_image, index, BACKGROUND);
-      } else {
-        SET_PIXEL(marked_image, index, UNDEFINE);
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = src_col;
+        bck_mark_points->push_back(lp);
       }
     }
   }
@@ -530,18 +551,24 @@ void LazySnapping::Cut(SegmentationData* sd, UserInput* uip) {
   int subject_colour = sd->GetSubjectColour();
   int background_colour = sd->GetBackgroundColour();
   ImageData<int>* marked_image = sd->GetMarkedImage();
-  std::vector<int>* sub_mark_index = uip->GetSubjectPoints().first;
-  std::vector<int>* sub_mark_value = uip->GetSubjectPoints().second;
-  std::vector<int>* bck_mark_index = uip->GetBackgroundPoints().first;
-  std::vector<int>* bck_mark_value = uip->GetBackgroundPoints().second;
+  std::vector<UserInput::LinePoint>* sub_mark_points = m_usr_input->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* bck_mark_points = m_usr_input->GetBackgroundPoints();
+  std::vector<int> sub_mark_value(sub_mark_points->size());
+  std::vector<int> bck_mark_value(bck_mark_points->size());
+  for (int i = 0; i < sub_mark_points->size(); ++i) {
+    sub_mark_value[i] = (*sub_mark_points)[i].value;
+  }
+  for (int i = 0; i < bck_mark_points->size(); ++i) {
+    bck_mark_value[i] = (*bck_mark_points)[i].value;
+  }
 
   std::vector<std::vector<double> > k_means_sub(K_NUM, std::vector<double>(3));
   std::vector<std::vector<double> > k_means_bck(K_NUM, std::vector<double>(3));
-  std::vector<int> cluster_vec_sub(sub_mark_value->size());
-  std::vector<int> cluster_vec_bck(bck_mark_value->size());
-  utils::Kmeans(*sub_mark_value, &cluster_vec_sub, &k_means_sub,
+  std::vector<int> cluster_vec_sub(sub_mark_value.size());
+  std::vector<int> cluster_vec_bck(bck_mark_value.size());
+  utils::Kmeans(sub_mark_value, &cluster_vec_sub, &k_means_sub,
                 K_NUM, ITER, ui_image->GetRandomSeed());
-  utils::Kmeans(*bck_mark_value, &cluster_vec_bck, &k_means_bck,
+  utils::Kmeans(bck_mark_value, &cluster_vec_bck, &k_means_bck,
                 K_NUM, ITER, ui_image->GetRandomSeed());
 
   if (m_lazy_type == LazySnapping::WATERSHED) {
@@ -556,18 +583,19 @@ void LazySnapping::Cut(SegmentationData* sd, UserInput* uip) {
                              &region_count);
 
     utils::Watershed(grad_image, marked_image, START_GRADIENT);
-    WatershedRegionGroup wrg(*source_image, *marked_image,
-                             *sub_mark_index, *bck_mark_index,
-                             region_count, START_MARK_NUM);
-    GraphCutBaseWatershed(k_means_sub, k_means_bck, &wrg);
-    utils::ExtractContourLine(wrg, ui_image, marked_image);
+    // WatershedRegionGroup wrg(*source_image, *marked_image,
+    //                          *sub_mark_index, *bck_mark_index,
+    //                          region_count, START_MARK_NUM);
+    // GraphCutBaseWatershed(k_means_sub, k_means_bck, &wrg);
+    // utils::ExtractContourLine(wrg, ui_image, marked_image);
   } else {
   // CountTime ct;
   // ct.ContBegin();
     GraphCutBasePixel(k_means_sub, k_means_bck, *source_image, marked_image, m_graph_vtx_map);
   // ct.ContEnd();
   // ct.PrintTime();
-    utils::ExtractContourLine(ui_image, marked_image);
+    utils::ExpandArea(marked_image, Lines::GetMarkedAreaId());
+    utils::ExtractContourLine(m_sd);
   }
   sd->SetCutStatus(true);
 }
@@ -674,12 +702,13 @@ void LazySnapping::MakeGraphVtx(const ImageData<int>& marked_image) {
   int width = marked_image.GetWidth();
   int height = marked_image.GetHeight();
   int i = 0;
+  assert(m_graph_vtx_map != NULL);
+  m_graph_vtx_map->clear();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int colour = GET_PIXEL(&marked_image, index);
       if (colour != IGNORED) {
-        assert(m_graph_vtx_map != NULL);
         (*m_graph_vtx_map)[index] = i++;
       }
     }
@@ -693,46 +722,155 @@ void LazySnapping::UpdateSceneVector(SegmentationData* sd, UserInput* uip) {
   ImageData<int>* src_image = sd->GetSourceImageBck();
   int width = marked_image->GetWidth();
   int height = marked_image->GetHeight();
-  std::vector<int>* sub_mark_index = uip->GetSubjectPoints().first;
-  std::vector<int>* sub_mark_value = uip->GetSubjectPoints().second;
-  std::vector<int>* bck_mark_index = uip->GetBackgroundPoints().first;
-  std::vector<int>* bck_mark_value = uip->GetBackgroundPoints().second;
+  std::vector<UserInput::LinePoint>* sub_mark_points = m_usr_input->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* bck_mark_points = m_usr_input->GetBackgroundPoints();
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       int index = y * width + x;
       int marked_colour = GET_PIXEL(marked_image, index);
       int src_colour = GET_PIXEL(src_image, index);
       if (marked_colour == SUBJECT) {
-        sub_mark_index->push_back(index);
-        sub_mark_value->push_back(src_colour);
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = src_colour;
+        sub_mark_points->push_back(lp);
       } else if (marked_colour == BACKGROUND) {
-        bck_mark_index->push_back(index);
-        bck_mark_value->push_back(src_colour);
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = src_colour;
+        bck_mark_points->push_back(lp);
       }
     }
   }
 }
 
+bool LazySnapping::SetSquareAreaForMarkedImage(int cen_x, int cen_y) {
+  assert(m_sd != NULL);
+  ImageData<int>* scr_image = m_sd->GetSourceImageBck();
+  ImageData<int>* marked_image = m_sd->GetMarkedImage();
+  ImageData<int>* ui_image = m_sd->GetSourceImage();
+  int width = scr_image->GetWidth();
+  int height = scr_image->GetHeight();
+  auto& subject_points = *m_usr_input->GetSubjectPoints();
+  auto& background_points = *m_usr_input->GetBackgroundPoints();
+
+  double square_radius = Lines::GetSquareRadius();
+  int leftup_x = std::max(static_cast<int>(cen_x - square_radius), 0);
+  int rightdown_x = std::min(static_cast<int>(cen_x + square_radius), width - 1);
+  int leftup_y = std::max(static_cast<int>(cen_y - square_radius), 0);
+  int rightdown_y = std::min(static_cast<int>(cen_y + square_radius), height - 1);
+  // set all pixels in marked_image IGNORED
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      int index = y * width + x;
+      int col = GET_PIXEL(marked_image, index);
+      if ((col & RIGHT_HALF) != OLD_SUB && (col & RIGHT_HALF) != OLD_BCK) {
+        SET_PIXEL(marked_image, y * width + x, IGNORED);
+      }
+    }
+  }
+  // set UNDEFINE
+  if (m_usr_input->GetUsrInputScene() == SUBJECT) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        int index = y * width + x;
+        int col = GET_PIXEL(marked_image, index);
+        if (y >= leftup_y && y <= rightdown_y && x >= leftup_x && x <= rightdown_x) {
+          if ((col & RIGHT_HALF) != OLD_SUB) {
+            SET_PIXEL(marked_image, index, UNDEFINE);
+          }
+        }
+        int ui_col = GET_PIXEL(ui_image, index);
+        if ((ui_col & RIGHT_HALF) == m_sd->GetBackgroundColour()) {
+          UserInput::LinePoint lp;
+          lp.index = index;
+          lp.value = GET_PIXEL(scr_image, index);
+          background_points.push_back(lp);
+        }
+      }
+    }
+  } else {
+    // get sub_area_ids
+    std::vector<int> sub_area_ids;
+    for (auto rit = background_points.rbegin(); rit != background_points.rend(); ++rit) {
+      if (rit->index == -1) {
+        sub_area_ids.push_back(rit->value);
+        assert(rit == background_points.rbegin());
+        background_points.pop_back();
+      } else {
+        break;
+      }
+    }
+    if (sub_area_ids.empty()) {
+      return false;
+    }
+    // set UNDEFINE according to the area ids
+    assert(background_points.rbegin()->index != -1);
+    bool assert_true = false;
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        int index = y * width + x;
+        int mark_col = GET_PIXEL(marked_image, index);
+        int col = GET_PIXEL(ui_image, index);
+        if (y >= leftup_y && y <= rightdown_y && x >= leftup_x && x <= rightdown_x) {
+          for (int i = 0; i < sub_area_ids.size(); ++i) {
+            if (mark_col == sub_area_ids[i]) {
+              SET_PIXEL(marked_image, index, UNDEFINE);
+              assert_true = true;
+            }
+          }
+          if ((col & RIGHT_HALF) == m_sd->GetSubjectColour()) {
+            UserInput::LinePoint lp;
+            lp.index = index;
+            lp.value = GET_PIXEL(scr_image, index);
+            subject_points.push_back(lp);
+          }
+        }
+      }
+    }
+    assert(assert_true);
+  }
+  Scene usr_scn = m_usr_input->GetUsrInputScene();
+  int subject_colour = usr_scn == SUBJECT ? (OLD_SUB + Lines::GetMarkedAreaId()) : SUBJECT;
+  int background_colour = usr_scn == SUBJECT ? BACKGROUND : (OLD_BCK + Lines::GetMarkedAreaId());
+  for (int i = 0; i < subject_points.size(); ++i) {
+    int mark_col = GET_PIXEL(marked_image, subject_points[i].index);
+    if ((mark_col & RIGHT_HALF) != OLD_SUB) {
+      SET_PIXEL(marked_image, subject_points[i].index, subject_colour);
+    }
+  }
+  for (int i = 0; i < background_points.size(); ++i) {
+    int mark_col = GET_PIXEL(marked_image, background_points[i].index);
+    if ((mark_col & RIGHT_HALF) != OLD_BCK) {
+      if (usr_scn == SUBJECT || mark_col == UNDEFINE) {
+        SET_PIXEL(marked_image, background_points[i].index, background_colour);
+      }
+    }
+  }
+  MakeGraphVtx(*marked_image);
+  return true;
+}
+
 void LazySnapping::DoPartition() {
-  // CountTime ct;
-  // ct.ContBegin();
+  CountTime ct;
+  ct.ContBegin();
 
   SegmentationWithoutCoarsen();
   // SegmentationWithCoarsen();
 
-  // ct.ContEnd();
-  // ct.PrintTime();
+  ct.ContEnd();
+  ct.PrintTime();
 }
 
-// #define DRAW_LINE_TEST
+#define DRAW_LINE_TEST
 
 void LazySnapping::DoLeftButtonDown(int x, int y) {
-  InitMarkedImage();
+  // UpdateSceneVectorFromSourceImage();
+  m_usr_input->SetUsrInputScene(SUBJECT);
 #ifdef DRAW_LINE_TEST 
+  m_usr_input->Reset();
   m_usr_input->DrawFirstPointForSub(x, y);
-#endif
-  UpdateSceneVector(m_sd, m_usr_input);
-#ifndef DRAW_LINE_TEST
+#else
   DoPartition();
 #endif
 #if 0
@@ -742,15 +880,30 @@ void LazySnapping::DoLeftButtonDown(int x, int y) {
 }
 
 void LazySnapping::DoRightButtonDown(int x, int y) {
+  m_usr_input->SetUsrInputScene(BACKGROUND);
+  m_usr_input->Reset();
   m_usr_input->DrawFirstPointForBck(x, y);
 }
 
 void LazySnapping::DoLeftMouseMove(int x, int y) {
   m_usr_input->DrawSubjectBegin(x, y);
+  if (!m_usr_input->IsCut() || !SetSquareAreaForMarkedImage(x, y)) {
+    Segmentation::RemoveLastResult(m_sd);
+    utils::ExtractContourLine(m_sd);
+    return;
+  }
+  Cut(m_sd, m_usr_input);
+  // DoPartition();
 }
 
 void LazySnapping::DoRightMouseMove(int x, int y) {
   m_usr_input->DrawBackgroundBegin(x, y);
+  if (!m_usr_input->IsCut() || !SetSquareAreaForMarkedImage(x, y)) {
+    Segmentation::RemoveLastResult(m_sd);
+    utils::ExtractContourLine(m_sd);
+    return;
+  }
+  Cut(m_sd, m_usr_input);
 }
 
 void LazySnapping::DoLeftButtonUp(int x, int y) {
@@ -758,18 +911,21 @@ void LazySnapping::DoLeftButtonUp(int x, int y) {
   m_usr_input->DrawSubjectFinish(x, y);
   // std::string input_name = m_usr_input->GetImageName() + "_input.bmp";
   // utils::SaveImage(input_name.c_str(), *(m_sd->GetSourceImage()));
-  DoPartition();
+  // DoPartition();
 #endif
 }
 
 void LazySnapping::DoRightButtonUp(int x, int y) {
   m_usr_input->DrawBackgroundFinish(x, y);
-  DoPartition();
 }
 
 void LazySnapping::ResetUserInput() {
   Segmentation::ResetUserInput();
   SetLazySnappingMethod(LazySnapping::PIXEL);
+  if (m_graph_vtx_map != NULL) {
+    delete m_graph_vtx_map;
+    m_graph_vtx_map = new std::unordered_map<int, int>();
+  }
 }
 
 void LazySnapping::SetLazySnappingMethod(LazySnappingType lst) {

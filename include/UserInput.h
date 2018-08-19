@@ -5,6 +5,7 @@
 #include <vector>
 #include <stdlib.h>
 #include <string>
+#include "include/utils.h"
 
 class SegmentationData;
 
@@ -20,26 +21,43 @@ class UserInput {
   virtual void DrawBackgroundBegin(int x, int y) {}
   virtual void DrawSubjectFinish(int x, int y) {}
   virtual void DrawBackgroundFinish(int x, int y) {}
+  virtual void Reset();
+  struct LinePoint {
+    int index;
+    int value;
+    int direction_x;
+    int direction_y;
+    LinePoint()
+      : index(0)
+      , value(0)
+      , direction_x(0)
+      , direction_y(0) {}
+  };
 
   UserInput();
   UserInput(const char* file_name);
   UserInput(UserInput* hlf_uip);
-  void Reset();
   virtual ~UserInput() {}
   void SetSegmentationData(SegmentationData* sd);
   UserInput* GetHalfScaleUserInput();
-  std::pair<std::vector<int>*, std::vector<int>* > GetSubjectPoints();
-  std::pair<std::vector<int>*, std::vector<int>* > GetBackgroundPoints();
+  std::vector<LinePoint>* GetSubjectPoints();
+  std::vector<LinePoint>* GetBackgroundPoints();
   std::string GetImageName();
+  Scene GetUsrInputScene();
+  void SetUsrInputScene(Scene scn);
+  bool IsCut();
+  void SetIsCut(bool is_cut);
 
  protected:
   SegmentationData* m_sd;
-  std::vector<int> m_sub_mark_index;
-  std::vector<int> m_sub_mark_value;
-  std::vector<int> m_bck_mark_index;
-  std::vector<int> m_bck_mark_value;
+  std::vector<LinePoint> m_sub_line_points;
+  std::vector<LinePoint> m_bck_line_points;
   UserInput* m_hlf_uip;
   std::string m_file_name;
+  Scene m_usr_input_scene;
+
+ private:
+  bool m_is_cut;
 };
 
 #endif  // INCLUDE_USER_INPUT_H_

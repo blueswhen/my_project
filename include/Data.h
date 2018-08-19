@@ -29,8 +29,10 @@ class Data :public UserInput {
         double y_v = atof(line);
         int y = y_v * image_height;
         int index = y * image_width + x;
-        m_sub_mark_index.push_back(index);
-        m_sub_mark_value.push_back(GET_PIXEL(&src_image, index));
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = GET_PIXEL(&src_image, index);
+        m_sub_line_points.push_back(lp);
       }
     } else {
       // square
@@ -52,11 +54,15 @@ class Data :public UserInput {
         for (int x = 0; x < image_width; ++x) {
           int index = y * image_width + x;
           if (y >= y_leftup && y < y_rightdown && x >= x_leftup && x < x_rightdown) {
-            m_sub_mark_index.push_back(index);
-            m_sub_mark_value.push_back(GET_PIXEL(&src_image, index));
+            UserInput::LinePoint lp;
+            lp.index = index;
+            lp.value = GET_PIXEL(&src_image, index);
+            m_sub_line_points.push_back(lp);
           } else {
-            m_bck_mark_index.push_back(index);
-            m_bck_mark_value.push_back(GET_PIXEL(&src_image, index));
+            UserInput::LinePoint lp;
+            lp.index = index;
+            lp.value = GET_PIXEL(&src_image, index);
+            m_bck_line_points.push_back(lp);
           }
         }
       }

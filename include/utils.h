@@ -10,7 +10,9 @@
 #include "include/colour.h"
 
 #define EPSILON 0.00000001
+#define RIGHT_HALF 0x0000ffff
 typedef unsigned char uchar;
+class SegmentationData;
 
 enum Scene {
   BACKGROUND = BLACK,
@@ -19,6 +21,8 @@ enum Scene {
   IGNORED = COLOUR_PURPLE_RED,
   TEMP1 = GREEN,
   TEMP2 = RED,
+  OLD_SUB = COLOUR_RANDOM1,
+  OLD_BCK = COLOUR_RANDOM2,
 };
 
 enum Direction {
@@ -148,8 +152,8 @@ void ShowMarkedImage(ImageData<int>* marked_image);
 double CalcBeta(const ImageData<int>& img);
 void ExtractContourLine(const WatershedRegionGroup& wrg, ImageData<int>* source_image,
                         ImageData<int>* marked_image);
-void ExtractContourLine(ImageData<int>* source_image,
-                        ImageData<int>* marked_image);
+void ExtractContourLine(SegmentationData* sd);
+void ExpandArea(ImageData<int>* marked_image, int area_id);
 void CreateSegImage(const ImageData<int>& marked_image,
                     const WatershedRegionGroup& wrg,
                     ImageData<int>* seg_image);

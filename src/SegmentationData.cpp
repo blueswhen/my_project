@@ -1,6 +1,7 @@
 // Copyright sxniu 2014-10
 #include "include/SegmentationData.h"
 #include "include/ImageData.h"
+#include "include/utils.h"
 
 SegmentationData::SegmentationData(ImageData<int>* src_img,
                                    ImageData<int>* src_img_bck,
@@ -14,6 +15,9 @@ SegmentationData::SegmentationData(ImageData<int>* src_img,
     , m_half_sd(half_sd)
     , m_is_cutted(false) {
       m_marked_image.CreateEmptyImage(m_source_image->GetWidth(), m_source_image->GetHeight());
+      m_usr_sub_colour = m_usr_sub_colour & RIGHT_HALF;
+      m_usr_bck_colour = m_usr_bck_colour & RIGHT_HALF;
+      assert(m_usr_sub_colour && m_usr_bck_colour);
     }
 
 void SegmentationData::Reset() {

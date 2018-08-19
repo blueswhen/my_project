@@ -12,6 +12,7 @@
 #include "include/CountTime.h"
 #include "include/LazySnapping.h"
 #include "include/Segmentation.h"
+#include "include/UserInput.h"
 
 using namespace cv;
 
@@ -33,16 +34,12 @@ void ShowImage(const ImageData<int>& image) {
   imshow(WIN_NAME, image_show);
 }
 
-void DrawLine(ImageData<int>* image, std::vector<int>* line_points_idx,
-              int end_idx, int line_colour, int width) {
-  if (line_points_idx == NULL) {
-    printf("error: the line vec is null");
-    return;
-  }
-  int start_y = line_points_idx->back() / width;
-  int start_x = line_points_idx->back() - start_y * width;
-  int end_y = end_idx / width;
-  int end_x = end_idx - end_y * width;
+void DrawLine(ImageData<int>* ui_image, ImageData<int>* scr_image,
+              int start_x, int start_y, int end_x, int end_y,
+              int line_colour, std::vector<UserInput::LinePoint>* line_points,
+              int ignore_colour) {
+  assert(ui_image != NULL && scr_image != NULL);
+  int width = ui_image->GetWidth();
   double k_line = end_x - start_x == 0 ? (end_y - start_y > 0 ? DBL_MAX : -DBL_MAX) :
                     static_cast<double>(end_y - start_y) / (end_x - start_x);
   int x = start_x;
@@ -51,6 +48,7 @@ void DrawLine(ImageData<int>* image, std::vector<int>* line_points_idx,
   int y_dist = abs(end_y - start_y);
   int x_dist = abs(end_x - start_x);
   int times = x_dist > y_dist ? x_dist : y_dist;
+
   for (int j = 0; j < times; ++j) {
     if (x_dist > y_dist) {
       x = end_x - start_x > 0 ? x + 1 : x - 1;
@@ -66,17 +64,47 @@ void DrawLine(ImageData<int>* image, std::vector<int>* line_points_idx,
       }
     }
     int index = y * width + x;
-    line_points_idx->push_back(index);
-    if (image != NULL) {
-      int width_image = image->GetWidth();
-      assert(width_image == width);
-      SET_PIXEL(image, index, line_colour);
+    int ui_col = GET_PIXEL(ui_image, index);
+    if ((ui_col & RIGHT_HALF) != (line_colour & RIGHT_HALF) &&
+        (ui_col & RIGHT_HALF) != (ignore_colour & RIGHT_HALF)) {
+      if (line_points != NULL) {
+        UserInput::LinePoint lp;
+        lp.index = index;
+        lp.value = GET_PIXEL(scr_image, index);
+        lp.direction_x = end_x - start_x;
+        lp.direction_y = end_y - start_y;
+        line_points->push_back(lp);
+      }
+      SET_PIXEL(ui_image, index, line_colour);
     }
   }
 }
 
-void DrawLine(std::vector<int>* line_points_idx, int end_idx, int width) {
-  DrawLine(NULL, line_points_idx, end_idx, BLACK, width);
+void DrawSquare(ImageData<int>* ui_image, ImageData<int>* scr_image,
+                int leftup_x, int leftup_y, int rightdown_x, int rightdown_y,
+                int line_colour, int ignore_colour,
+                std::vector<UserInput::LinePoint>* line_points) {
+  assert(ui_image != NULL);
+  int width = ui_image->GetWidth();
+
+  int y_leftup = leftup_y;
+  int x_leftup = leftup_x;
+  int y_rightdown = rightdown_y;
+  int x_rightdown = rightdown_x;
+
+  int leftup_pos = y_leftup * width + x_leftup;
+  int rightdown_pos = y_rightdown * width + x_rightdown;
+  int rightup_pos = y_leftup * width + x_rightdown;
+  int leftdown_pos = y_rightdown * width + x_leftup;
+
+  ui::DrawLine(ui_image, scr_image, leftup_x, leftup_y, rightdown_x, leftup_y,
+               line_colour, line_points, ignore_colour);
+  ui::DrawLine(ui_image, scr_image, rightdown_x, leftup_y, rightdown_x, rightdown_y,
+               line_colour, line_points, ignore_colour);
+  ui::DrawLine(ui_image, scr_image, rightdown_x, rightdown_y, leftup_x, rightdown_y,
+               line_colour, line_points, ignore_colour);
+  ui::DrawLine(ui_image, scr_image, leftup_x, rightdown_y, leftup_x, leftup_y,
+               line_colour, line_points, ignore_colour);
 }
 
 void on_mouse(int event, int x, int y, int flags, void* param) {

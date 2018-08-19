@@ -9,7 +9,6 @@
 
 class SegmentationData;
 class UserInput;
-class GrapyType;
 
 template <class T>
 class ImageData;

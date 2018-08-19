@@ -29,7 +29,7 @@
 #define IMAGE_OUT_NAME_2 "result2.bmp"
 #define IMAGE_OUT_NAME_3 "result3.bmp"
 
-#define NO_UI
+// #define NO_UI
 
 void ScaleUpRegionArea(int center_x, int center_y, int factor,
                        ImageData<int>* src_image, ImageData<int>* new_image) {
@@ -115,11 +115,12 @@ int main(int argc, char** argv) {
   return 0;
 #else
 
-  Lines ln_25;
-  Lines ln_50(&ln_25);
+  // Lines ln_25;
+  // Lines ln_50(&ln_25);
   // Lines ln_50;
+  Lines ln;
   // Lines ln(&ln_50);
-  Lines ln(file_name.c_str());
+  // Lines ln(file_name.c_str());
   Square sr(file_name.c_str());
   LazySnapping ls(&sd, &ln);
   // GrabCut gc(&sd, &ln);
@@ -155,13 +156,13 @@ int main(int argc, char** argv) {
     case 'm':
       // show marked image
       if (!sd.GetMarkedImage()->IsEmpty()) {
-        int center_x = 660;
-        int center_y = 535;
-        int factor = 4;
-        ImageData<int> new_image;
-        ScaleUpRegionArea(center_x, center_y, factor, sd.GetMarkedImage(), &new_image);
-        ui::ShowImage(new_image);
-        // ui::ShowImage(*sd.GetMarkedImage());
+        // int center_x = 660;
+        // int center_y = 535;
+        // int factor = 4;
+        // ImageData<int> new_image;
+        // ScaleUpRegionArea(center_x, center_y, factor, sd.GetMarkedImage(), &new_image);
+        // ui::ShowImage(new_image);
+        ui::ShowImage(*sd.GetMarkedImage());
       } else {
         printf("marked image has no data\n");
       }

@@ -33,12 +33,14 @@ class LazySnapping :public Segmentation {
   virtual void ResetUserInput();
   // double GetEnergyRegionItem(int colour, Scene scn);
   // double GetEnergyBoundryItem(int colour, int near_colour, Direction drc);
-  // void SegmentImageByGraph(const GrapyType& graph, ImageData<int>* marked_image);
+  // void SegmentImageByGraph(const GraphType& graph, ImageData<int>* marked_image);
 
   void SetLazySnappingMethod(LazySnappingType lst);
+  ~LazySnapping();
 
  private:
-  void InitMarkedImage();
+  void UpdateSceneVectorFromSourceImage();
+  bool SetSquareAreaForMarkedImage(int cen_x, int cen_y);
   virtual void InitMarkedImage(SegmentationData* sd, UserInput* uip);
   virtual void Cut(SegmentationData* sd, UserInput* uip);
   virtual void MakeTrimapForMarkedImage(ImageData<int>* marked_image, int band_width);

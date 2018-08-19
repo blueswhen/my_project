@@ -41,10 +41,12 @@ enum GrabScene {
 };
 
 void GrabCut::DoLeftButtonDown(int x, int y) {
+  m_usr_input->SetUsrInputScene(SUBJECT);
   m_usr_input->DrawFirstPointForSub(x, y);
 }
 
 void GrabCut::DoRightButtonDown(int x, int y) {
+  m_usr_input->SetUsrInputScene(BACKGROUND);
   m_usr_input->DrawFirstPointForBck(x, y);
 }
 
@@ -181,8 +183,8 @@ void GraphCutWithGrab(const ImageData<int>& image, ImageData<int>* marked_image,
   int vtx_count = width * height;
   int edge_count = 2 * (4 * vtx_count - 3 * (width + height) + 2);
 
-#define B_MAXFLOW 0
-#define IGRAPH 1
+#define B_MAXFLOW 1
+#define IGRAPH 0
 
 #if B_MAXFLOW
   GraphType graph(vtx_count, edge_count);
@@ -343,9 +345,9 @@ void GrabCut::DoPartition() {
 
 void GrabCut::InitMarkedImage(SegmentationData* sd, UserInput* uip) {
   assert(sd != NULL && uip != NULL);
-  std::vector<int>* subject_index = uip->GetSubjectPoints().first;
-  std::vector<int>* background_index = uip->GetBackgroundPoints().first;
-  assert(subject_index != NULL && background_index != NULL);
+  std::vector<UserInput::LinePoint>* subject_points = uip->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* background_points = uip->GetBackgroundPoints();
+  assert(subject_points!= NULL && background_points != NULL);
   ImageData<int>* marked_image = sd->GetMarkedImage();
 
   int width = marked_image->GetWidth();
@@ -356,12 +358,12 @@ void GrabCut::InitMarkedImage(SegmentationData* sd, UserInput* uip) {
       SET_PIXEL(marked_image, index, PR_SUB);
     }
   }
-  for (int i = 0; i < background_index->size(); ++i) {
-    SET_PIXEL(marked_image, (*background_index)[i], BCK);
+  for (int i = 0; i < background_points->size(); ++i) {
+    SET_PIXEL(marked_image, (*background_points)[i].index, BCK);
   }
-  if(subject_index->size() + background_index->size() != width * height) {
-    for (int i = 0; i < subject_index->size(); ++i) {
-      SET_PIXEL(marked_image, (*subject_index)[i], SUB);
+  if(subject_points->size() + background_points->size() != width * height) {
+    for (int i = 0; i < subject_points->size(); ++i) {
+      SET_PIXEL(marked_image, (*subject_points)[i].index, SUB);
     }
   }
 }
@@ -376,10 +378,8 @@ void GrabCut::Cut(SegmentationData* sd, UserInput* uip) {
   ImageData<int>* ui_image = sd->GetSourceImage();
   ImageData<int>* marked_image = sd->GetMarkedImage();
   const ImageData<int>* source_image = sd->GetSourceImageBck();
-  std::vector<int>* sub_mark_index = uip->GetSubjectPoints().first;
-  std::vector<int>* sub_mark_value = uip->GetSubjectPoints().second;
-  std::vector<int>* bck_mark_index = uip->GetBackgroundPoints().first;
-  std::vector<int>* bck_mark_value = uip->GetBackgroundPoints().second;
+  std::vector<UserInput::LinePoint>* sub_mark_points = uip->GetSubjectPoints();
+  std::vector<UserInput::LinePoint>* bck_mark_points = uip->GetBackgroundPoints();
 
   assert(ui_image != NULL && source_image != NULL && marked_image != NULL &&
          ui_image->IsEmpty() == false && source_image->IsEmpty() == false &&
@@ -389,7 +389,15 @@ void GrabCut::Cut(SegmentationData* sd, UserInput* uip) {
   Gmm subject_gmm;
   std::vector<uchar> comp_idxs(source_image->GetWidth() * source_image->GetHeight());
 
-  InitGmms(*source_image, *sub_mark_value, *bck_mark_value, &background_gmm, &subject_gmm);
+  std::vector<int> sub_mark_value(sub_mark_points->size());
+  std::vector<int> bck_mark_value(bck_mark_points->size());
+  for (int i = 0; i < sub_mark_points->size(); ++i) {
+    sub_mark_value[i] = (*sub_mark_points)[i].value;
+  }
+  for (int i = 0; i < bck_mark_points->size(); ++i) {
+    bck_mark_value[i] = (*bck_mark_points)[i].value;
+  }
+  InitGmms(*source_image, sub_mark_value, bck_mark_value, &background_gmm, &subject_gmm);
 
   const double gamma = 50;
   const double lambda = 9 * gamma;
@@ -409,7 +417,7 @@ void GrabCut::Cut(SegmentationData* sd, UserInput* uip) {
   }
 
   CreateFinalMarkedImage(marked_image);
-  utils::ExtractContourLine(ui_image, marked_image);
+  utils::ExtractContourLine(m_sd);
   sd->SetCutStatus(true);
 }
 
@@ -430,5 +438,5 @@ double GetEnergyBoundryItem(int colour, int near_colour, Direction drc) {
   return 0;
 }
 
-void SegmentImageByGraph(const GrapyType& graph, ImageData<int>* marked_image) {
+void SegmentImageByGraph(const GraphType& graph, ImageData<int>* marked_image) {
 }

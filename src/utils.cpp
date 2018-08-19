@@ -13,6 +13,7 @@
 #include "include/colour.h"
 #include "include/ImageData.h"
 #include "include/WatershedRegion.h"
+#include "include/SegmentationData.h"
 
 #define COMPONENTS 3
 #define IN_QUEUE -2
@@ -855,8 +856,9 @@ void ExtractContourLine(const WatershedRegionGroup& wrg, ImageData<int>* source_
   }
 }
 
-void ExtractContourLine(ImageData<int>* source_image,
-                        ImageData<int>* marked_image) {
+void ExtractContourLine(SegmentationData* sd) {
+  ImageData<int>* source_image = sd->GetSourceImage();
+  ImageData<int>* marked_image = sd->GetMarkedImage();
   if (source_image->IsEmpty() || marked_image->IsEmpty()) {
     printf("error: source_image or marked_image is empty");
     return;
@@ -868,13 +870,65 @@ void ExtractContourLine(ImageData<int>* source_image,
       int index = y * width + x;
       int arrounds[8] = EIGHT_ARROUND_POSITION(x, y, width, height);
       int cen_colour = GET_PIXEL(marked_image, index);
-      if (cen_colour == IGNORED) {
-        continue;
-      }
       for (int i = 0; i < 8; ++i) {
         int arr_colour = GET_PIXEL(marked_image, arrounds[i]);
-        if (cen_colour != arr_colour && arr_colour == SUBJECT) {
-          SET_PIXEL(source_image, index, CONTOUR_LINE);
+        bool is_break = false;
+        if ((cen_colour & RIGHT_HALF) != (arr_colour & RIGHT_HALF) &&
+            (arr_colour & RIGHT_HALF) == OLD_SUB && (cen_colour & RIGHT_HALF) != OLD_BCK) {
+          if ((GET_PIXEL(source_image, index) & RIGHT_HALF) != sd->GetSubjectColour()) {
+            SET_PIXEL(source_image, index, CONTOUR_LINE);
+            is_break = true;
+          }
+        }
+        // used in the background user input
+        if ((cen_colour & RIGHT_HALF) == OLD_SUB && (arr_colour & RIGHT_HALF) == OLD_BCK) {
+          // avoid removing bck line
+          if ((GET_PIXEL(source_image, index) & RIGHT_HALF) != sd->GetBackgroundColour()) {
+            SET_PIXEL(source_image, index, CONTOUR_LINE);
+            is_break = true;
+          }
+        }
+        if (is_break) {
+          break;
+        }
+      }
+    }
+  }
+}
+
+void ExpandArea(ImageData<int>* marked_image, int area_id) {
+  assert(marked_image != NULL);
+  int scene = SUBJECT;
+  int width = marked_image->GetWidth();
+  int height = marked_image->GetHeight();
+  for (int y = 1; y < height - 1; ++y) {
+    for (int x = 1; x < width - 1; ++x) {
+      int index = y * width + x;
+      int cen_colour = GET_PIXEL(marked_image, index);
+      if (cen_colour != SUBJECT && cen_colour != BACKGROUND) continue;
+      scene = cen_colour;
+      int old_col = scene == SUBJECT ? OLD_SUB : OLD_BCK;
+      int arrounds[8] = EIGHT_ARROUND_POSITION(x, y, width, height);
+      for (int i = 0; i < 8; ++i) {
+        int arr_colour = GET_PIXEL(marked_image, arrounds[i]);
+        if ((arr_colour & RIGHT_HALF) == old_col) {
+          SET_PIXEL(marked_image, index, old_col + area_id);
+          std::stack<int> sk;
+          sk.push(index);
+          while (!sk.empty()) {
+            int idx = sk.top();
+            sk.pop();
+            int i_y = idx / width;
+            int i_x = idx - i_y * width;
+            int arr[8] = EIGHT_ARROUND_POSITION(i_x, i_y, width, height);
+            for (int i = 0; i < 8; ++i) {
+              int arr_c = GET_PIXEL(marked_image, arr[i]);
+              if (arr_c == scene) {
+                SET_PIXEL(marked_image, arr[i], old_col + area_id);
+                sk.push(arr[i]);
+              }
+            }
+          }
           break;
         }
       }
